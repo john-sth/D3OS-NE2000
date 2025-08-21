@@ -18,7 +18,7 @@ use smoltcp::wire::Ipv4Address;
 ///////////////////////////////////////////////////////////////
 // receiver: bind and print everything arriving on 12345
 ///////////////////////////////////////////////////////////////
-pub fn udp_recv_test() {
+/*pub fn udp_recv_test() {
     let port = 12344;
     let sock = network::open_socket(network::SocketType::Udp);
     network::bind_udp(sock, port).expect("bind failed");
@@ -40,13 +40,14 @@ pub fn udp_recv_test() {
         // keep it cooperative; poll thread is already running
         scheduler().sleep(1);
     }
-}
+}*/
 
 ///////////////////////////////////////////////////////////////
 // sender: fire N packets to 10.0.2.2:12345 and handle backpressure
 ///////////////////////////////////////////////////////////////
 // old test worked until the TX ring filled, then it paniced the kernel because call .expect("Failed to send UDP datagram").
 // new version doesn’t crash because it handles backpressure (BufferFull) by polling/yielding and retrying instead of panicking.
+/*
 pub fn udp_send_test(n: usize) {
     let dst_port = 12345;
     let sock = network::open_socket(network::SocketType::Udp);
@@ -91,7 +92,7 @@ pub fn client_send() {
     // wait for reply from server
     info!("Waiting for Server reply");
 }
-
+*/
 /*pub fn send_traffic(timing_interval: u16, packet_length: u16) {
     // create the packet
     // in rust indices like vec indexing or slicing have to be of type usize,
