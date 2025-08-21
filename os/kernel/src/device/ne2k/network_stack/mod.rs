@@ -16,6 +16,8 @@
 // changed to mut because send packet expects mutable self reference
 //
 
+use super::ne2000::*;
+use crate::device::ne2k::consts::TOTAL_BUFFER_BYTES;
 use crate::memory::{PAGE_SIZE, vmm};
 use crate::process_manager;
 use core::{ptr, slice};
@@ -41,87 +43,45 @@ use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
 
-use super::ne2000::*;
-
-// NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
-// Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
-
-// one page in the ne2000 receive buffer is 256 byte
-const NE_PAGE_SIZE: usize = 256;
-//Packet Header Size
-const HEADER_SIZE: usize = 4;
-// max. size of one Ethernet packet
-const MAX_FRAME_SIZE: usize = 1500;
-// max. Buffer size
-const BUFFER_SIZE: usize = HEADER_SIZE + MAX_FRAME_SIZE; // = 1504
-// calculate how many Pages in the NIC are needed to store a Packet with a MTU
-const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // = 6
-// size of the actual buffer
-const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
-
-/*const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
-const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
-    BUFFER_SIZE / PAGE_SIZE
-} else {
-    BUFFER_SIZE / PAGE_SIZE + 1
-};
-const RECV_QUEUE_CAP: usize = 16;
-*/
-
-// => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
-//const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
-
-// size of each receive buffer
-// 8 KiB = 8x1024
-// + 16 bytes for header/alignment
-// +1500 : max. Ethernet MTU payload size
-// => 9708 bytes per buffer
-// ensures each buffer can hold an ethernet frame payload + space for padding
-//const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
-// how many buffer pages are needed to cover buffer size
-// 9708 / 4096 = 2.37 -> else part -> 3 Pages
-// Page size is 4096 bytes
-/*const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
-    BUFFER_SIZE / PAGE_SIZE
-} else {
-    BUFFER_SIZE / PAGE_SIZE + 1
-};*/
-
 // =============================================================================
 // ==== STRUCTS
 // =============================================================================
 
-// =============================================================================
+// ==========================================
 // RxToken and TxToken
-// - tokens are types that allow to receive/send a single packet,
-// =============================================================================
+// - tokens are types that allow
+//   to receive/send a single packet,
+// ==========================================
 
-// =============================================================================
+// ==========================================
 // Transmit Token for the driver
 // - device: points to the ne2000 struct,
-// =============================================================================
+// ==========================================
 pub struct Ne2kTxToken<'a> {
     device: &'a mut Ne2000,
 }
-// =============================================================================
+// ==========================================
 // Receive Token for the driver
-// =============================================================================
+// ==========================================
 // - device: points to the ne2000 struct,
-// - buffer: contains the payload of the received packet
-// =============================================================================
+// - buffer: contains the payload of the
+//           received packet
+// ==========================================
 pub struct Ne2kRxToken<'a> {
     buffer: Vec<u8, PacketAllocator>,
     device: &'a Ne2000,
 }
 
-// =============================================================================
+// ==========================================
 // PacketAllocator
-// =============================================================================
+// ==========================================
 // allocate blocks of data
 // Ne2000 uses buffer ring,
-// packets can be overwritten by new incoming packets once the buffer is full
-// driver allocates memory in RAM to copy the packet there and frees the buffer on NE2000
-// =============================================================================
+// packets can be overwritten by new incoming
+// packets once the buffer is full
+// driver allocates memory in RAM to copy the
+// packet there and frees the buffer on NE2000
+// ==========================================
 
 #[derive(Default)]
 pub struct PacketAllocator;
@@ -130,13 +90,15 @@ pub struct PacketAllocator;
 // ==== IMPLEMENTATIONS
 // =============================================================================
 
-// =============================================================================
+// ==========================================
 // TxToken impl
-// =============================================================================
-// implementation is orientated on the rtl8139.rs module
-// generate new transmission token, a token to send a single network packet
-// see: https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
-// =============================================================================
+// ==========================================
+// implementation is orientated on the
+// rtl8139.rs module generate new transmission
+// token, a token to send a single network packet
+// see:
+// https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
+// ==========================================
 
 impl<'a> Ne2kTxToken<'a> {
     pub fn new(device: &'a mut Ne2000) -> Self {
@@ -144,15 +106,18 @@ impl<'a> Ne2kTxToken<'a> {
     }
 }
 
-// =============================================================================
+// ==========================================
 // phy::TxToken impl
-// =============================================================================
+// ==========================================
 //
-// implementation is orientated on the rtl8139.rs module
+// implementation is orientated on the
+// rtl8139.rs module
 // len: size of packet
-// consume function()
-// =============================================================================
+// ==========================================
 impl<'a> phy::TxToken for Ne2kTxToken<'a> {
+    // ==========================================
+    // consume function()
+    // ==========================================
     // consumes the token to send a single network packet
     // constructs buffer (size len) -> calls passed closure f
     // in the closure a valid network packet should be constructed
@@ -212,12 +177,13 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
     }
 }
 
-// =============================================================================
+// ==========================================
 // PacketAllocator impl
-// =============================================================================
-// allocate memory for the buffer of the receive token
+// ==========================================
+// allocate memory for the buffer of
+// the receive token
 // and functions for deallocation
-// =============================================================================
+// ==========================================
 
 unsafe impl Allocator for PacketAllocator {
     // from rtl8139.rs
@@ -254,14 +220,14 @@ impl<'a> Ne2kRxToken<'a> {
     }
 }
 
-// =============================================================================
+// ==========================================
 // phy::RxToken impl
-// =============================================================================
+// ==========================================
 // usage:
 // - implement the consume() function for the receive token
 // - returns the payload of the received packet, stored in buffer
 // - used buffer gets enqueued for storing new packets
-// =============================================================================
+// ==========================================
 impl<'a> phy::RxToken for Ne2kRxToken<'a> {
     fn consume<R, F>(mut self, f: F) -> R
     where
@@ -284,9 +250,9 @@ impl<'a> phy::RxToken for Ne2kRxToken<'a> {
     }
 }
 
-// =============================================================================
+// ==========================================
 // Device impl
-// =============================================================================
+// ==========================================
 // An interface for sending and receiving raw network frames
 //
 // called, when polling for new packets in network/mod.rs
@@ -294,7 +260,7 @@ impl<'a> phy::RxToken for Ne2kRxToken<'a> {
 // uses tokens, which are types that allow to receive/transmit a single packet
 // receive() and transmit() construct the tokens only, real sending, tranmitting
 // is done by the consume() functions of the Tokens
-// =============================================================================
+// ==========================================
 impl phy::Device for Ne2000 {
     type RxToken<'a>
         = Ne2kRxToken<'a>
@@ -305,9 +271,9 @@ impl phy::Device for Ne2000 {
     where
         Self: 'a;
 
-    // =============================================================================
+    // ==========================================
     // receive function
-    // =============================================================================
+    // ==========================================
     // creates a new RxToken and calls it's consume() function
     //
     // The additional transmit token makes it possible to generate a reply packet
@@ -333,9 +299,9 @@ impl phy::Device for Ne2000 {
         }
     }
 
-    // =============================================================================
+    // ==========================================
     // transmit function
-    // =============================================================================
+    // ==========================================
     // creates a new TxToken and calls it's consume function
     // Returns a TxToken, which accepts the packet contents
     // Converts &mut self to &Ne2000 safely.
@@ -347,12 +313,12 @@ impl phy::Device for Ne2000 {
         Some(Ne2kTxToken::new(self))
     }
 
-    // =============================================================================
+    // ==========================================
     // device capabilities function
-    // =============================================================================
+    // ==========================================
     //
     // define what the device supports
-    // =============================================================================
+    // ==========================================
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
         // max_transmission_unit = define max. size of a packet

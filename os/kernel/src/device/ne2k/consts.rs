@@ -18,12 +18,56 @@ use core::sync::atomic::AtomicUsize;
 // =============================================================================
 
 // =============================================================================
-// ==== CO// =============================================================================NSTANTS
+// ==== CONSTANTS
 // =============================================================================
+
+// NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
+// Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
+
+// one page in the ne2000 receive buffer is 256 byte
+pub const NE_PAGE_SIZE: usize = 256;
+//Packet Header Size
+pub const HEADER_SIZE: usize = 4;
+// max. size of one Ethernet packet
+pub const MAX_FRAME_SIZE: usize = 1500;
+// max. Buffer size
+pub const BUFFER_SIZE: usize = HEADER_SIZE + MAX_FRAME_SIZE; // = 1504
+// calculate how many Pages in the NIC are needed to store a Packet with a MTU
+pub const BUFFER_PAGES: usize = (BUFFER_SIZE + NE_PAGE_SIZE - 1) / NE_PAGE_SIZE; // = 6
+// size of the actual buffer
+pub const TOTAL_BUFFER_BYTES: usize = BUFFER_PAGES * NE_PAGE_SIZE; // = 1536
+
+/*const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
+    BUFFER_SIZE / PAGE_SIZE
+} else {
+    BUFFER_SIZE / PAGE_SIZE + 1
+};
+const RECV_QUEUE_CAP: usize = 16;
+*/
+
+// => (16 KiB + 4 KiB -1)/4 KiB = 4 pages
+//const FRAME_PAGES: usize = (BUFFER_RING_BYTES + PAGE_SIZE - 1) / PAGE_SIZE;
+
+// size of each receive buffer
+// 8 KiB = 8x1024
+// + 16 bytes for header/alignment
+// +1500 : max. Ethernet MTU payload size
+// => 9708 bytes per buffer
+// ensures each buffer can hold an ethernet frame payload + space for padding
+//const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
+// how many buffer pages are needed to cover buffer size
+// 9708 / 4096 = 2.37 -> else part -> 3 Pages
+// Page size is 4096 bytes
+/*const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
+    BUFFER_SIZE / PAGE_SIZE
+} else {
+    BUFFER_SIZE / PAGE_SIZE + 1
+};*/
 
 // use const here because the values don't need to be mutable
 // during program execution
-const DISPLAY_RED: &'static str = "\x1b[1;31m";
+pub const DISPLAY_RED: &'static str = "\x1b[1;31m";
 
 // Capacity for the receive_buffers_empty queue in the ne2000 struct
 pub const RECV_QUEUE_CAP: usize = 256;
