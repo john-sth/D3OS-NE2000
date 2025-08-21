@@ -61,15 +61,6 @@ pub fn init() {
                 rtl8139
             });
         }
-
-        if RTL8139.get().is_some() {
-            scheduler().ready(Thread::new_kernel_thread(
-                || loop {
-                    //poll_sockets();
-                },
-                "RTL8139",
-            ));
-        }
     }
 
     if let Some(rtl8139) = RTL8139.get() {
@@ -117,12 +108,13 @@ pub fn init() {
             dhcp_handle
         });
     }
+
     // Register the Ne2000 card here
     // wrap into Arc for shared ownership
     // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
     // References:
-    //             - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
-    //             - https://theretroweb.com/chips/4692 -> device id and vendor id
+    // - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
+    // - https://theretroweb.com/chips/4692 -> device id and vendor id
     if enable_ne2k {
         // get the EndpointHeader
         // the endpoint header contains essential information about the device,
@@ -143,44 +135,69 @@ pub fn init() {
                 Ne2000::assign(Arc::clone(&ne2k));
                 info!("assigned Interrupt handler");
 
-                // create new thread which polls for the fields rcv and ovw
-                // if the trigger method gets called by an packet received
-                // or receive buffer overwrite interrupt, the check method
-                // calls the corresponding method to handle the interrupt
-                scheduler().ready(Thread::new_kernel_thread(
-                    || loop {
-                        check();
-                    },
-                    "check",
-                ));
-                // return the instance
+                extern "sysv64" fn poll_interrupts() {
+                    loop {
+                        check_interrupts();
+                    }
+                }
+                scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "check_interrupts"));
+
                 ne2k
             });
         }
+        // create new thread which polls for the fields rcv and ovw
+        // if the trigger method gets called by an packet received
+        // or receive buffer overwrite interrupt, the check method
+        // calls the corresponding method to handle the interrupt
+        if let Some(ne2k) = NE2000.get() {
+            extern "sysv64" fn poll() {
+                loop {
+                    poll_sockets_ne2k();
+                    scheduler().sleep(50);
+                }
+            }
+            scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
+            // return the instance
+            //ne2k
+            // Set up network interface
+            // if NE2000 is initialized, start a new thread,
+            // which calls poll_ne2000 in an infinite loop
+            // the method checks for any outgoing or incoming packages in the buffers of
+            // the device or in the buffers of the sockets
+            let time = timer().systime_ms();
+            let mut conf = iface::Config::new(HardwareAddress::from(ne2k.get_mac()));
+            conf.random_seed = time as u64;
 
-        // if NE2000 is initialized, start a new thread,
-        // which calls poll_ne2000 in an infinite loop
-        // the method checks for any outgoing or incoming packages in the buffers of
-        // the device or in the buffers of the sockets
-        if NE2000.get().is_some() {
-            scheduler().ready(Thread::new_kernel_thread(
-                || loop {
-                    poll_sockets();
-                    // add this because if not, the send test is slowed down
-                    // avoid CPU starvation and keep polling regular
-                    // prevents CPU hogging by the poll thread.
-                    // allows other tasks (like your sender or interrupt handlers) to run.
-                    // forms a cooperative multitasking environment for fair scheduling.
-                    //scheduler().sleep(1);
-                },
-                "NE2000_rx",
-            ));
-            /*scheduler().ready(Thread::new_kernel_thread(
-                || loop {
-                    poll_ne2000_tx();
-                },
-                "NE2000_tx",
-            ));*/
+            // The Smoltcp interface struct wants a mutable reference to the device.
+            // However, the RTL8139 driver is designed to work with shared references.
+            // Since smoltcp does not actually store the mutable reference anywhere,
+            // we can safely cast the shared reference to a mutable one.
+            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
+            // since it does not modify the device itself.)
+            let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
+            add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
+
+            let sockets = SOCKETS.get().expect("Socket set not initialized!");
+            let current_process = process_manager().read().current_process();
+            let mut process_map = SOCKET_PROCESS.write();
+            // setup DNS
+            DNS_SOCKET.call_once(|| {
+                let dns_socket = dns::Socket::new(&[], Vec::new());
+                let dns_handle = sockets.write().add(dns_socket);
+                process_map
+                    .try_insert(dns_handle, current_process.clone())
+                    .expect("failed to insert socket into socket-process map");
+                dns_handle
+            });
+            // request an IP address via DHCP
+            DHCP_SOCKET.call_once(|| {
+                let dhcp_socket = dhcpv4::Socket::new();
+                let dhcp_handle = sockets.write().add(dhcp_socket);
+                process_map
+                    .try_insert(dhcp_handle, current_process)
+                    .expect("failed to insert socket into socket-process map");
+                dhcp_handle
+            });
         }
     }
 }
@@ -222,7 +239,7 @@ pub fn ne2000() -> Option<Arc<Ne2000>> {
     }
 }
 
-pub fn check() {
+pub fn check_interrupts() {
     let ne2000 = NE2000.get().expect("NE2000 not initialized");
     let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
     // check if interrupt occured
@@ -598,7 +615,7 @@ fn poll_ne2000_rx() {
     }
 }
 
-fn poll_sockets() {
+fn poll_sockets_ne2k() {
     // Tune this cap if bursts are heavy:
     const MAX_INGRESS_PER_TICK: usize = 8;
     let now = Instant::from_millis(timer().systime_ms() as i64);
