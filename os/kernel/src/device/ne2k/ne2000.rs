@@ -38,7 +38,6 @@ use alloc::vec::Vec;
 // for converting the mac address to type EthernetAddress
 use smoltcp::wire::EthernetAddress;
 
-use alloc::str;
 use x86_64::VirtAddr;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 use x86_64::structures::paging::frame::PhysFrameRange;
@@ -50,58 +49,19 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 // for writing to the registers
 // super looks in a relative path for other modules
 // load the bitflags for the register into the module
-use super::register_flags::page_registers_offsets::*;
-use super::register_flags::*;
+use super::consts::page_registers_offsets::*;
+use super::consts::*;
 // smoltcp configuration
 use super::network_stack::*;
-
-// =============================================================================
-// ==== CONSTANTS
-// =============================================================================
-
-// use const here because the values don't need to be mutable
-// during program execution
-const DISPLAY_RED: &'static str = "\x1b[1;31m";
-
-// Capacity for the receive_buffers_empty queue in the ne2000 struct
-const RECV_QUEUE_CAP: usize = 256;
-
-// Buffer Start Page for the transmitted pages
-const TRANSMIT_START_PAGE: u8 = 0x40;
-
-// Define the range of a size for an ethernet packet
-const MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
-const MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
-
-// Reception Buffer Ring Start Page
-// http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
-// Page 4 PSTART
-const RECEIVE_START_PAGE: u8 = 0x46;
-
-//Reception Buffer Ring End
-//P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
-const RECEIVE_STOP_PAGE: u8 = 0x80;
-//static RECEIVE_STOP_PAGE: u8 = 0x48;
-//static RECEIVE_STOP_PAGE: u8 = 0x50;
-
-// 0x80 - 0x46 = 0x58 = 58 pages
-// total buffer size = 58 * 256 Bytes  = 14.KiB
-
-// use static here, because the variable gets changed
-// during the program and a mutable value is needed
-
-// this variable points to the next packet to be read
-//static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
-static CURRENT_NEXT_PAGE_POINTER: AtomicU8 = AtomicU8::new(0);
-static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+use crate::device::ne2k::consts;
 
 // =============================================================================
 // ==== STRUCTS
 // =============================================================================
 
-// =============================================================================
+// ================================
 // Registers on Page0
-// =============================================================================
+// ================================
 pub struct Page0 {
     crda_0_p0: Port<u8>,
     crda_1_p0: Port<u8>,
@@ -124,9 +84,9 @@ pub struct Page0 {
     rsr_port: Port<u8>,
 }
 
-// =============================================================================
+// ================================
 // Registers on Page1
-// =============================================================================
+// ================================
 pub struct Page1 {
     //Physical Address Registers, for Reading the MAC Address
     // Reference:
@@ -327,7 +287,7 @@ impl Ne2000 {
         let kernel_process = process_manager().read().kernel_process().unwrap();
         // create bounded mpmc queue with RECV_QUEUE_CAP Capacity
         let recv_buffers = mpmc::bounded::scq::queue(RECV_QUEUE_CAP);
-        for _ in 0..RECV_QUEUE_CAP {
+        for _ in 0..consts::RECV_QUEUE_CAP {
             // allocate one physical frame
             let phys_frame = unsafe { vmm::alloc_frames(1) };
 
@@ -370,7 +330,7 @@ impl Ne2000 {
             // wrap Sender and Receiver in a Mutex
             send_queue: (Mutex::new(send_queue.0), send_queue.1),
             receive_buffers_empty: recv_buffers, // save freshly allocated buffers with size of RECV_QUEUE_CAP in the struct
-            receive_messages: mpmc::bounded::scq::queue(RECV_QUEUE_CAP),
+            receive_messages: mpmc::bounded::scq::queue(consts::RECV_QUEUE_CAP),
             interrupt,
             check_interrupts: check_interrupts,
         };

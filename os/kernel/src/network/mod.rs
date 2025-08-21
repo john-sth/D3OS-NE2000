@@ -46,8 +46,8 @@ pub enum SocketType {
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
 
-    let enable_rtl8139 = true;
-    let enable_ne2k = false;
+    let enable_rtl8139 = false;
+    let enable_ne2k = true;
 
     if enable_rtl8139 {
         let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
@@ -61,52 +61,52 @@ pub fn init() {
                 rtl8139
             });
         }
-    }
 
-    if let Some(rtl8139) = RTL8139.get() {
-        extern "sysv64" fn poll() {
-            loop {
-                poll_sockets();
-                scheduler().sleep(50);
+        if let Some(rtl8139) = RTL8139.get() {
+            extern "sysv64" fn poll() {
+                loop {
+                    poll_sockets();
+                    scheduler().sleep(50);
+                }
             }
+            scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
+
+            // Set up network interface
+            let time = timer().systime_ms();
+            let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
+            conf.random_seed = time as u64;
+
+            // The Smoltcp interface struct wants a mutable reference to the device.
+            // However, the RTL8139 driver is designed to work with shared references.
+            // Since smoltcp does not actually store the mutable reference anywhere,
+            // we can safely cast the shared reference to a mutable one.
+            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
+            // since it does not modify the device itself.)
+            let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
+            add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
+
+            let sockets = SOCKETS.get().expect("Socket set not initialized!");
+            let current_process = process_manager().read().current_process();
+            let mut process_map = SOCKET_PROCESS.write();
+            // setup DNS
+            DNS_SOCKET.call_once(|| {
+                let dns_socket = dns::Socket::new(&[], Vec::new());
+                let dns_handle = sockets.write().add(dns_socket);
+                process_map
+                    .try_insert(dns_handle, current_process.clone())
+                    .expect("failed to insert socket into socket-process map");
+                dns_handle
+            });
+            // request an IP address via DHCP
+            DHCP_SOCKET.call_once(|| {
+                let dhcp_socket = dhcpv4::Socket::new();
+                let dhcp_handle = sockets.write().add(dhcp_socket);
+                process_map
+                    .try_insert(dhcp_handle, current_process)
+                    .expect("failed to insert socket into socket-process map");
+                dhcp_handle
+            });
         }
-        scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
-
-        // Set up network interface
-        let time = timer().systime_ms();
-        let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-        conf.random_seed = time as u64;
-
-        // The Smoltcp interface struct wants a mutable reference to the device.
-        // However, the RTL8139 driver is designed to work with shared references.
-        // Since smoltcp does not actually store the mutable reference anywhere,
-        // we can safely cast the shared reference to a mutable one.
-        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
-        // since it does not modify the device itself.)
-        let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-        add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
-
-        let sockets = SOCKETS.get().expect("Socket set not initialized!");
-        let current_process = process_manager().read().current_process();
-        let mut process_map = SOCKET_PROCESS.write();
-        // setup DNS
-        DNS_SOCKET.call_once(|| {
-            let dns_socket = dns::Socket::new(&[], Vec::new());
-            let dns_handle = sockets.write().add(dns_socket);
-            process_map
-                .try_insert(dns_handle, current_process.clone())
-                .expect("failed to insert socket into socket-process map");
-            dns_handle
-        });
-        // request an IP address via DHCP
-        DHCP_SOCKET.call_once(|| {
-            let dhcp_socket = dhcpv4::Socket::new();
-            let dhcp_handle = sockets.write().add(dhcp_socket);
-            process_map
-                .try_insert(dhcp_handle, current_process)
-                .expect("failed to insert socket into socket-process map");
-            dhcp_handle
-        });
     }
 
     // Register the Ne2000 card here
@@ -256,6 +256,7 @@ pub fn check_interrupts() {
         device.handle_overflow();
     }
 }
+
 pub fn add_interface(interface: Interface) {
     INTERFACES.write().push(interface);
 }
@@ -329,11 +330,11 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
 pub fn open_udp() -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
     // changed transmit and receive buffer size to tx_size and rx_size
-    ////// IMPORTANT//////
-    ///// Metadata storage limits the maximum number of packets in the buffer
-    /// Limits how many packets can be queued, regardless of size
-    ///// and payload storage limits the maximum total size of packets.
-    /// Limits total bytes across all packets, ensuring memory bounds are respected
+    // IMPORTANT//////
+    // Metadata storage limits the maximum number of packets in the buffer
+    // Limits how many packets can be queued, regardless of size
+    // and payload storage limits the maximum total size of packets.
+    // Limits total bytes across all packets, ensuring memory bounds are respected
     // https://docs.rs/smoltcp/latest/smoltcp/storage/struct.PacketBuffer.html
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
@@ -615,7 +616,7 @@ fn poll_ne2000_rx() {
     }
 }
 
-fn poll_sockets_ne2k() {
+/*fn poll_sockets_ne2k() {
     // Tune this cap if bursts are heavy:
     const MAX_INGRESS_PER_TICK: usize = 8;
     let now = Instant::from_millis(timer().systime_ms() as i64);
@@ -652,4 +653,52 @@ fn poll_sockets_ne2k() {
             //scheduler().sleep(delay);
         }
     }
+}*/
+
+fn poll_sockets_ne2k() -> Option<()> {
+    let ne2k = NE2000.get().expect("NE2000 not initialized");
+    let mut interfaces = INTERFACES.try_write()?;
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
+    let time = Instant::from_millis(timer().systime_ms() as i64);
+
+    // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
+    // to work with a shared reference. We can safely cast the shared reference to a mutable.
+    let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
+
+    let interface = interfaces.get_mut(0).expect("failed to get interface");
+    interface.poll(time, device, &mut sockets);
+    // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
+    let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
+    let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
+    if let Some(event) = dhcp_socket.poll() {
+        match event {
+            dhcpv4::Event::Deconfigured => {
+                info!("lost DHCP lease");
+                interface.update_ip_addrs(|addrs| addrs.clear());
+                interface.routes_mut().remove_default_ipv4_route();
+            }
+            dhcpv4::Event::Configured(config) => {
+                info!("acquired DHCP lease:");
+                info!("IP address: {}", config.address);
+                interface.update_ip_addrs(|addrs| {
+                    addrs.clear();
+                    addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+                });
+
+                if let Some(router) = config.router {
+                    info!("default gateway: {router}");
+                    interface.routes_mut().add_default_ipv4_route(router).unwrap();
+                } else {
+                    info!("no default gateway");
+                    interface.routes_mut().remove_default_ipv4_route();
+                }
+                info!("DNS servers: {:?}", config.dns_servers);
+                let dns_servers: Vec<_> = config.dns_servers.iter().map(|ip| IpAddress::Ipv4(*ip)).collect();
+                let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
+                let dns_socket = sockets.get_mut::<dns::Socket>(*dns_handle);
+                dns_socket.update_servers(&dns_servers);
+            }
+        }
+    }
+    Some(())
 }

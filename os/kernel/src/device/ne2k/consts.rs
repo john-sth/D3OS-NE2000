@@ -11,8 +11,51 @@
 // =============================================================================
 // DEPENDENCIES:
 // =============================================================================
-use bitflags::bitflags;
+pub(crate) use bitflags::bitflags;
+use core::sync::atomic::AtomicU8;
+use core::sync::atomic::AtomicUsize;
+
 // =============================================================================
+
+// =============================================================================
+// ==== CO// =============================================================================NSTANTS
+// =============================================================================
+
+// use const here because the values don't need to be mutable
+// during program execution
+const DISPLAY_RED: &'static str = "\x1b[1;31m";
+
+// Capacity for the receive_buffers_empty queue in the ne2000 struct
+pub const RECV_QUEUE_CAP: usize = 256;
+
+// Buffer Start Page for the transmitted pages
+pub const TRANSMIT_START_PAGE: u8 = 0x40;
+
+// Define the range of a size for an ethernet packet
+pub const MINIMUM_ETHERNET_PACKET_SIZE: u8 = 64;
+pub const MAXIMUM_ETHERNET_PACKET_SIZE: u32 = 1522;
+
+// Reception Buffer Ring Start Page
+// http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+// Page 4 PSTART
+pub const RECEIVE_START_PAGE: u8 = 0x46;
+
+//Reception Buffer Ring End
+//P.4 PSTOP http://www.osdever.net/documents/WritingDriversForTheDP8390.pdf
+pub const RECEIVE_STOP_PAGE: u8 = 0x80;
+//static RECEIVE_STOP_PAGE: u8 = 0x48;
+//static RECEIVE_STOP_PAGE: u8 = 0x50;
+
+// 0x80 - 0x46 = 0x58 = 58 pages
+// total buffer size = 58 * 256 Bytes  = 14.KiB
+
+// use static here, because the variable gets changed
+// during the program and a mutable value is needed
+
+// this variable points to the next packet to be read
+//static mut CURRENT_NEXT_PAGE_POINTER: u8 = 0;
+pub static CURRENT_NEXT_PAGE_POINTER: AtomicU8 = AtomicU8::new(0);
+pub static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub mod page_registers_offsets {
     pub const COMMAND: u16 = 0x00; // R|W COMMAND used for P0, P1, P2
