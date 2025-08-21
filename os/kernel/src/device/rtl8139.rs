@@ -1,7 +1,3 @@
-use crate::interrupt::interrupt_dispatcher::InterruptVector;
-use crate::interrupt::interrupt_handler::InterruptHandler;
-use crate::memory::{PAGE_SIZE, frames};
-use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -24,6 +20,11 @@ use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags, PhysFrame};
 use x86_64::{PhysAddr, VirtAddr};
+
+use crate::interrupt::interrupt_dispatcher::InterruptVector;
+use crate::interrupt::interrupt_handler::InterruptHandler;
+use crate::memory::{PAGE_SIZE, vmm};
+use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 
 const BUFFER_SIZE: usize = 8 * 1024 + 16 + 1500;
 const BUFFER_PAGES: usize = if BUFFER_SIZE % PAGE_SIZE == 0 {
@@ -199,9 +200,8 @@ impl TransmitDescriptor {
 
 impl ReceiveBuffer {
     pub fn new() -> Self {
-        let receive_memory = frames::alloc(BUFFER_PAGES);
+        let receive_memory = unsafe { vmm::alloc_frames(BUFFER_PAGES) };
         let receive_buffer = unsafe { Vec::from_raw_parts(receive_memory.start.start_address().as_u64() as *mut u8, BUFFER_SIZE, BUFFER_SIZE) };
-
         Self {
             index: 0,
             data: receive_buffer,
@@ -223,7 +223,9 @@ unsafe impl Allocator for PacketAllocator {
         }
 
         let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).expect("PacketAllocator may only be used with page frames!");
-        unsafe { frames::free(PhysFrameRange { start, end: start + 1 }) }
+        unsafe {
+            vmm::free_frames(PhysFrameRange { start, end: start + 1 });
+        }
     }
 }
 
@@ -260,7 +262,7 @@ impl<'a> phy::TxToken for Rtl8139TxToken<'a> {
         // Allocate physical memory for the packet (DMA only works with physical addresses)
         let phys_buffer = unsafe { vmm::alloc_frames(1) };
         let pages = PageRange {
-            start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
+            start: Page::from_start_address(VirtAddr::new(phys_buffer.start.start_address().as_u64())).unwrap(),
             end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap(),
         };
 

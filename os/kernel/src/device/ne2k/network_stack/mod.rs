@@ -16,7 +16,7 @@
 // changed to mut because send packet expects mutable self reference
 //
 
-use crate::memory::{PAGE_SIZE, frames};
+use crate::memory::{PAGE_SIZE, vmm};
 use crate::process_manager;
 use core::{ptr, slice};
 use log::info;
@@ -169,32 +169,25 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
         // allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
         // for defining where the packet gets written
-        let phys_buffer = frames::alloc(1);
-        let phys_start_addr = phys_buffer.start.start_address();
+        let phys_buffer = unsafe { vmm::alloc_frames(1) };
         // map to kernel space
         let pages = PageRange {
-            start: Page::from_start_address(VirtAddr::new(phys_start_addr.as_u64())).unwrap(),
-            end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64()))
-                .unwrap(),
+            start: Page::from_start_address(VirtAddr::new(phys_buffer.start.start_address().as_u64())).unwrap(),
+            end: Page::from_start_address(VirtAddr::new(phys_buffer.end.start_address().as_u64())).unwrap(),
         };
 
         // set kernel page tables to writable, no_caching for DMA,
         // ensure buffer is present in memory
         //map it writable & uncached for DMA
         let kernel_process = process_manager().read().kernel_process().unwrap();
-        kernel_process.virtual_address_space.set_flags(
-            pages,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE,
-        );
+        kernel_process
+            .virtual_address_space
+            .set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
 
         // Queue physical memory buffer for deallocation after transmission (.enqueue)
         //.1 is the Sender here
         // nic then sends the packet over the network
-        self.device
-            .send_queue
-            .1
-            .enqueue(phys_buffer)
-            .expect("Failed to enqueue physical buffer!");
+        self.device.send_queue.1.enqueue(phys_buffer).expect("Failed to enqueue physical buffer!");
 
         // Let smoltcp write the packet data to the buffer
         // slice : a view into a block of memory represented as a pointer and a length.
@@ -205,9 +198,7 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
         //assert_eq!(x, &[1, 7, 3]);
         // from_raw_parts_mut : Forms a mutable slice from a pointer and a length.
 
-        let buffer = unsafe {
-            slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len)
-        };
+        let buffer = unsafe { slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len) };
         // closure builds the ethernet frame
         // closure that, when run, writes whatever bytes are sent onto the link
         let result = f(buffer);
@@ -248,15 +239,11 @@ unsafe impl Allocator for PacketAllocator {
         // get the raw pointer, convert to u64 -> physical memory adress
         // PhysAddr wraps address in a PhysAddr type
         // contruct Frame from the Address, must be page-aligned, (divisible by page size )
-        let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64))
-            .expect("PacketAllocator may only be used with page frames!");
+        let start = PhysFrame::from_start_address(PhysAddr::new(ptr.as_ptr() as u64)).expect("PacketAllocator may only be used with page frames!");
         unsafe {
             // create one physical page frage
             // frames::free -> return to memory allocator
-            frames::free(PhysFrameRange {
-                start,
-                end: start + 1,
-            })
+            vmm::free_frames(PhysFrameRange { start, end: start + 1 })
         }
     }
 }
