@@ -339,7 +339,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     //=================================================================
     // spawn the TX thread
     //=================================================================
-    scheduler().ready(Thread::new_kernel_thread(|| benchmark::udp_send_test(2000), "udp_tx"));
+    //scheduler().ready(Thread::new_kernel_thread(|| benchmark::udp_send_test(2000), "udp_tx"));
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
