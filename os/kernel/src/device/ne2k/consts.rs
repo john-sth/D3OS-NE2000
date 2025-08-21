@@ -21,6 +21,10 @@ use core::sync::atomic::AtomicUsize;
 // ==== CONSTANTS
 // =============================================================================
 
+// vendor and device id
+pub const VENDOR_ID: u16 = 0x10ec;
+pub const DEVICE_ID: u16 = 0x8029;
+
 // NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
 // Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
 

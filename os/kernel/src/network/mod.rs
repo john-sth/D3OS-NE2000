@@ -1,3 +1,4 @@
+use crate::device::ne2k::consts::{DEVICE_ID, VENDOR_ID};
 use crate::device::rtl8139::Rtl8139;
 use alloc::collections::btree_map::BTreeMap;
 // add the N2000 driver
@@ -119,7 +120,7 @@ pub fn init() {
         // get the EndpointHeader
         // the endpoint header contains essential information about the device,
         // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
-        let device_ne2k = pci_bus().search_by_ids(0x10ec, 0x8029);
+        let device_ne2k = pci_bus().search_by_ids(VENDOR_ID, DEVICE_ID);
         if device_ne2k.len() > 0 {
             // perform the initialization only once!
             NE2000.call_once(|| {
