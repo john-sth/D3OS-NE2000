@@ -109,8 +109,14 @@ def server(sock, local_address):
         if not data:
             continue
 
+        print(data)
+        print(data.strip())
+        print(address)
+        address = ('127.0.0.1', 1798)
+        print(address)
         if data.strip() == b"Init":
 
+            print(address)
             sock.sendto(data, address)
             return receive_traffic(sock) 
 

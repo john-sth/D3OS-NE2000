@@ -158,7 +158,7 @@ pub fn init() {
             extern "sysv64" fn poll() {
                 loop {
                     poll_sockets_ne2k();
-                    scheduler().sleep(50);
+                    //scheduler().sleep(50);
                 }
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
