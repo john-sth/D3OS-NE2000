@@ -16,96 +16,163 @@
 
 extern crate alloc;
 
+use alloc::ffi::CString;
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
-use concurrent::{process, thread};
-#[allow(unused_imports)]
+use core::str;
+use core::time::Duration;
+use network::UdpSocket;
 use runtime::*;
-use smoltcp::iface::{Interface, SocketHandle, SocketSet};
-use smoltcp::socket::udp;
-use smoltcp::time::Instant;
-use smoltcp::wire::Ipv4Address;
-use terminal::{print, println};
-// get local address
-use core::net::SocketAddr;
+use terminal::print;
+use terminal::println;
+use time;
+
+#[derive(Debug)]
+pub enum NetworkError {/* align with your definition */}
 
 #[unsafe(no_mangle)]
-pub fn main() {
-    let process = process::current().unwrap();
-    let thread = thread::current().unwrap();
-
-    println!(
-        "Hello from Thread [{}] in Process [{}]!\n",
-        thread.id(),
-        process.id()
-    );
-
-    println!("Arguments:");
-    let args = env::args();
-    for arg in args {
-        println!("  {}", arg);
-    }
+fn main() {
+    udp_send_packets("10.0.2.2", 12345, 1200, Some(1000), Some(100.0), None);
 }
 
-// =============================================================================
-// Server Mode
-// =============================================================================
-/*pub fn server(socket: &Ud) -> u32 {
-    let local_net_address = match socket
-
-    if socket.getLocalAddress {
-        println("nettest-rs: Failed to query socket address!");
-        return -1;
-    }
-
-    println("nettest: sever listening on {} ", local_net_address);
-    println("Send 'exit' to leave.");
-}*/
+pub fn udp_send_packets(
+    host: &str, // IP string, e.g. "10.0.2.2"
+    port: u16,
+    payload_size: usize,
+    count: Option<usize>,
+    pps: Option<f32>,
+    duration_s: Option<f32>,
+) {
+}
 
 /*
-    // Wait for client to initiate connection, return if exit code is != 0
-    while (true) {
-        auto receivedDatagram = Util::Network::Udp::UdpDatagram();
-        if (!socket.receive(receivedDatagram)) {
-            Util::System::error << "nettest: Failed to receive echo request!" << Util::Io::PrintStream::endl << Util::Io::PrintStream::flush;
-            return -1;
+    /*let mut args = env::args().peekable();
+    // the first argument is the program name, ignore it
+    args.next();
+
+    // check the next arguments for flags
+    loop {
+        match args.peek().map(String::as_str) {
+            Some("-h") | Some("--help") => {
+                println!(
+                    "Usage:
+    nettest host port
+
+Examples:
+    nc example.net 5678
+        open a TCP connection to example.net:5678
+    nc -u -l 0.0.0.0 1234
+        bind to 0.0.0.0:1234, UDP"
+                );
+                return;
+            }
+            Some("-l") => {
+                mode = Mode::Listen;
+                args.next();
+            }
+            Some("-u") => {
+                protocol = Protocol::Udp;
+                args.next();
+            }
+            // now, we're finally past the options
+            Some(_) => break,
+            None => {
+                println!("Usage: nc [-u] [-l] host port");
+                return;
+            }
+        }
+    }*/
+}
+
+pub fn udp_send_packets(
+    host: &str, // IP string, e.g. "10.0.2.2"
+    port: u16,
+    payload_size: usize,
+    count: Option<usize>,
+    pps: Option<f32>,
+    duration_s: Option<f32>,
+) {
+    if payload_size < 4 {
+        println!("payload_size must be >= 4");
+        return;
+    }
+
+    let dst_addr = parse_socket_addr(host, port).expect("invalid host");
+
+    let sock = match UdpSocket::bind(dst_addr) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("bind failed: {:?}", e);
+            return;
+        }
+    };
+
+    // Handshake: send "Init", expect echo
+    let init = b"Init";
+    let _ = sock.send_to(init, dst_addr);
+    let mut buf = [0u8; 1024];
+    if let Ok((len, _peer)) = sock.recv_from(&mut buf) {
+        if &buf[..len] == init {
+            println!("Handshake OK");
+        } else {
+            println!("Unexpected handshake reply");
+        }
+    } else {
+        println!("No echo from server after handshake");
+    }
+
+    let interval_ms = pps.map(|f| (1000.0 / f) as u64);
+    let start_ms = time::systime();
+    let mut sent = 0usize;
+    let mut seq: u32 = 0;
+
+    while {
+        if let Some(d) = duration_s {
+            let elapsed_sec: f32 = (time::systime() - start_ms).as_seconds_f32();
+
+            elapsed_sec < d
+        } else {
+            true
+        }
+    } && count.map_or(true, |c| sent < c)
+    {
+        // make payload: 4-byte seq + zeros
+        let mut packet = Vec::with_capacity(payload_size);
+        packet.extend_from_slice(&seq.to_be_bytes());
+        packet.extend_from_slice(&vec![0u8; payload_size - 4]);
+
+        // send, handling backpressure
+        loop {
+            match sock.send_to(&packet, dst_addr) {
+                Ok(_) => break,
+                //Err(NetworkError::DeviceBusy) => {
+                //    scheduler().sleep(1);
+                //}
+                Err(e) => {
+                    println!("send error: {:?}", e);
+                    return;
+                }
+            }
         }
 
-        // If connection request is received: send reply to client
-        if (Util::String(receivedDatagram.getData(), receivedDatagram.getLength()).strip() == "Init") {
-            if (!socket.send(receivedDatagram)) {
-                Util::System::error << "nettest: Failed to send echo reply!" << Util::Io::PrintStream::endl << Util::Io::PrintStream::flush;
-                return -1;
-            }
+        sent += 1;
+        seq = seq.wrapping_add(1);
 
-            return receiveTraffic(socket);
-        } else if (Util::String(receivedDatagram.getData(), receivedDatagram.getLength()).strip() == "InitR") { /** Reverse test: */
-            if (!socket.send(receivedDatagram)) {
-                Util::System::error << "nettest: Failed to send echo reply!" << Util::Io::PrintStream::endl << Util::Io::PrintStream::flush;
-                return -1;
-            }
-
-            // Wait for message with packetLength and timing interval
-            if (!socket.receive(receivedDatagram)) {
-                Util::System::error << "nettest: Failed to receive echo request!" << Util::Io::PrintStream::endl
-                                    << Util::Io::PrintStream::flush;
-                return -1;
-            }
-            if(receivedDatagram.getLength() != 4){
-                Util::System::error << "nettest: Failed to receive reverse test data! " << Util::Io::PrintStream::endl << Util::Io::PrintStream::flush;
-                return -1;
-            }
-
-            // Get packetLen and Test duration
-            auto data = receivedDatagram.getData();
-            uint16_t packetLength = (data[0] << 8) + data[1];
-            uint16_t timingInterval = (data[2] << 8) + data[3];
-
-            // Get destination address from client
-            auto destinationAddress = reinterpret_cast<const Util::Network::Ip4::Ip4PortAddress&>(receivedDatagram.getRemoteAddress());
-            destinationAddress.setPort(receivedDatagram.getRemotePort());
-            // Start reverse test
-            return send_traffic(socket, destinationAddress, timingInterval, packetLength);
+        if let Some(ms) = interval_ms {
+            //scheduler().sleep(ms);
         }
     }
-}*/
+
+    // send "exit"
+    let _ = sock.send_to(b"exit", dst_addr);
+
+    println!("Sent {} packets", sent);
+}
+
+fn parse_socket_addr(host: &str, port: u16) -> Option<core::net::SocketAddr> {
+    // Implement parsing logic for IpAddr and port, similar to resolve_hostname
+    // For now, assume IPv4 literal
+    host.parse().ok().map(|ip| core::net::SocketAddr::new(ip, port))
+}
+*/

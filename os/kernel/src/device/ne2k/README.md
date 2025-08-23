@@ -10,15 +10,24 @@
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
+- [ ] create flowchart for qemu network
+- [ ] add a list of modified and used files in the OS
 - [ ] check the ne2000.cpp impl
 - [x] rewrite the call for receive and overflow with AtomicBool values
-- [ ] check overwrite method
+- [x] check overwrite method
 - [ ] rewrite of nettest application in rust
-- [ ] check boundaries for receive buffer
-- [ ] check page size page buffer
-- [ ] check if the ovwe bit gets actually set at the initialization of the nic
+- [x] check boundaries for receive buffer
+- [x] check page size page buffer
+- [x] check if the ovwe bit gets actually set at the initialization of the nic
 - [x] check if packets bigger than max. Ethernet size don't get processed in the receive method and if so do the same for smoltcp so that no buffer gets enqueued
 - [x] check network/mod.rs open_socket() for transmit and rx size for packetbuffer
+
+## Files edited
+
+- qemu-pci.sh : added device and vendor id
+  - how to find kernel module : modinfo ne2k-pci
+  - bus id: lspci -nnk | grep -A3 -i ne2k-pci
+- consts.rs : increase kernel_heap_size
 
 ## Reason for slirp errors:
 

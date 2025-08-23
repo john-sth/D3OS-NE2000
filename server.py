@@ -13,145 +13,110 @@ from datetime import datetime, timedelta
 import time
 
 
+def receive_traffic(sock): 
+    packet_count = 0
+    #buffer size 
+    buffer_size = 4096000
 
-def kb_bar(kb, scale=200):  # 200 KB per block (tweak)
-    blocks = int(max(1, kb) / scale)
-    return "█" * min(blocks, 60)  # cap width
+    packets_received = 0
+    packets_out_of_order = 0
+    duplicated_packets = 0
+    bytes_received = 0
+    current_packet_number = None
+    previous_packet_number = 0
+    interval_counter = 0
+    bytes_received_in_interval = 0
+    bytes_received_total = 0
 
+    # Create a UDP socket
+    #socket_handle = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Bind the socket to the port
+    #server_address = (ip, port)
+    #socket_handle.bind(server_address)
+    #print(f"## server is listening from {ip} on Port {port} ")
 
-
-
-packet_count = 0
-#buffer size 
-buffer_size = 4096000
-
-packets_received = 0
-packets_out_of_order = 0
-duplicated_packets = 0
-bytes_received = 0
-current_packet_number = 0
-previous_packet_number = 0
-interval_counter = 0
-bytes_received_in_interval = 0
-bytes_received_total = 0
-
-
-
-# get the arguments
-if len(sys.argv) == 3:
-    # Get "IP address of Server" and also the "port number" from argument 1 and argument 2
-    ip = sys.argv[1]
-    port = int(sys.argv[2])
-else:
-    print("Run like : python3 server.py <arg1:server ip:this system IP 192.168.1.6> <arg2:server port:4444 >")
-    exit(1)
-
-# Create a UDP socket
-socket_handle = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Bind the socket to the port
-server_address = (ip, port)
-socket_handle.bind(server_address)
+    data, address = sock.recvfrom(buffer_size) 
+    if not data:
+        return 
 
 
-print("Do Ctrl+c to exit the program !!")
+    print(f"start: {datetime.now().time()}")
+    seconds_passed = int(time.time()) + 1
 
-print(f"## server is listening from {ip} on Port {port} ")
-print(f"start: {datetime.now().time()}")
+    received_message = data
 
+    packets_received += 1
+    previousPacketNumber = (received_message[0] << 24) + (received_message[1] << 16) + (received_message[2] << 8) + received_message[3];
+    bytes_received_in_interval = len(data)
 
-#while True:
-#    data, address = socket_handle.recvfrom(buffer_size)
-#    if data.getData().decode().strip() == "Init":
-#        receive_traffic()
-
-
-
-
-#def receive_traffic(): 
     #seconds_passed = int(time.time() + 1)
     #print("\n\n 2. Server received: ", data.decode('utf-8'), "\n\n")
     while True:
         # extract data payload and address from where the packet was sent
         #try:
-        data, address = socket_handle.recvfrom(buffer_size) 
-        if data:
-            seconds_passed = int(time.time())
-            packets_received += 1
-            # If we got a packet
-        #except OSError as e:
-        #    print(f"nettest: Failed to receive echo request! ({e})")
-        #    break
-        
-        if packets_received == 2000:
+        data, address = sock.recvfrom(buffer_size) 
+        if data.strip() == b"exit":
             break
+
+        packets_received += 1
+        current_packet_number = (received_message[0] << 24) + (received_message[1] << 16) + (received_message[2] << 8) + received_message[3];
+
+        if current_packet_number == previous_packet_number:
+            duplicated_packets += 1
         
+        elif current_packet_number != (previous_packet_number+1) or current_packet_number < previous_packet_number:
+            packets_out_of_order += 1
+
+        previous_packet_number = current_packet_number
         bytes_received_in_interval = bytes_received_in_interval + len(data)
-        bytes_received_total += len(data)
-    
-        while seconds_passed < int(time.time()):
-            kb = bytes_received_in_interval / 1000
-            # One or more whole seconds have elapsed; print for each missed second.
-            #print(f"{interval_counter}-{interval_counter + 1}:    {bytes_received_in_interval / 1000:.0f} KB/s", flush=True)
-            print(f"{interval_counter:>3}-{interval_counter + 1:<3}: "
-            f"{kb:>7.0f} KB/s  {kb_bar(kb)}", flush=True)
+
+        if seconds_passed <= int(time.time()):
+            print(f"{interval_counter}-{interval_counter + 1}: {bytes_received_in_interval / 1000} KB/s")
             interval_counter += 1
-            # Reset interval bytes *after* reporting
+            bytes_received = bytes_received + bytes_received_in_interval
             bytes_received_in_interval = 0
-            # Advance our "secondsPassed" marker by one second
-            seconds_passed += 1
+            seconds_passed +=1
     
-        #if seconds_passed < int(time.time()):
-        #    print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
-        #    interval_counter += 1
-        #    bytes_received = bytes_received + bytes_received_in_interval
-        #    bytes_received_in_interval = 0
-        #    seconds_passed += 1 
-    
-    bytes_received = bytes_received + bytes_received_in_interval
-    duration_s = max(1, interval_counter)  # avoid division by zero
-    avg_kbps = (bytes_received_total / 1000) / duration_s
-    
-    #print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
+    bytes_received_total = bytes_received + bytes_received_in_interval
+
+    print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
+    print(f"Received exit: End reception")
     print(f"------------------------------------------------------------------------")
     print(f"Number of packets received : {packets_received}")
-    print(f"Total bytes received       :   {bytes_received_total}")
+    print(f"Total bytes received       : {bytes_received_total}")
     print(f"Bytes received             : {bytes_received / 1000} KB/s")
     print(f"Bytes received             : {bytes_received } B/s")
     print(f"Average Bytes received     : {(bytes_received / (interval_counter+1)) / 1000} KB/s")
     print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
     print(f"duplicated packets         : {duplicated_packets}")
-    print(f"duration : {duration_s}")
-    print(f"Average throughput:     {avg_kbps:.1f} KB/s")
     #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
     print(f"------------------------------------------------------------------------")
-
-
-
 
     #print(" payload size ", data.len())
     #send_data = input("Type some text to send => ")
     #s.sendto(send_data.encode('utf-8'), address)
     #print("\n\n 1. Server sent : ", send_data,"\n\n")
 
-def server(socket_handle)
+def server(sock, local_address):
 
     buffer_size = 409600
     # Print the local address (currently hardcoded)
-    local_address = "127.0.0.1"
     print(f"nettest: server listening on {local_address}! Send 'exit' to leave.")
+    print("Do Ctrl+c to exit the program !!")
 
-    while true:
-        data, address = socket_handle.recvfrom(buffer_size)
-        if data:
-            if data.strip().decode() == "Init":
-                socket_handle.sendto(data, address)
+    while True:
+        data, address = sock.recvfrom(buffer_size)
+        if not data:
+            continue
 
-                return receive_traffic(socket_handle) 
+        if data.strip() == b"Init":
+
+            sock.sendto(data, address)
+            return receive_traffic(sock) 
 
 
 
-def main()
+def main():
 
     # set the arguments for the server_address
     local_address = "127.0.0.1"
@@ -164,11 +129,33 @@ def main()
     timing_interval = 20
 
     # create socket handle
-    socket_handle = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Bind the socket to the port
-    socket = socket_handle.bind(server_address)
+    sock.bind(server_address)
 
-    return server(socket)
+    return server(sock, local_address)
 
 
+if __name__ == "__main__":
+    main()
+
+
+#def kb_bar(kb, scale=200):  # 200 KB per block (tweak)
+#    blocks = int(max(1, kb) / scale)
+#    return "█" * min(blocks, 60)  # cap width
+## get the arguments
+#if len(sys.argv) == 3:
+#    # Get "IP address of Server" and also the "port number" from argument 1 and argument 2
+#    ip = sys.argv[1]
+#    port = int(sys.argv[2])
+#else:
+#    print("Run like : python3 server.py <arg1:server ip:this system IP 192.168.1.6> <arg2:server port:4444 >")
+#    exit(1)
+#
+#
+#
+##while True:
+##    data, address = socket_handle.recvfrom(buffer_size)
+##    if data.getData().decode().strip() == "Init":
+##        receive_traffic()

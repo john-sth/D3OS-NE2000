@@ -110,12 +110,14 @@ pub fn init() {
         }
     }
 
+    // =============================================================================
     // Register the Ne2000 card here
     // wrap into Arc for shared ownership
     // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
     // References:
     // - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
     // - https://theretroweb.com/chips/4692 -> device id and vendor id
+    // =============================================================================
     if enable_ne2k {
         // get the EndpointHeader
         // the endpoint header contains essential information about the device,
@@ -146,10 +148,12 @@ pub fn init() {
                 ne2k
             });
         }
+        // =============================================================================
         // create new thread which polls for the fields rcv and ovw
         // if the trigger method gets called by an packet received
         // or receive buffer overwrite interrupt, the check method
         // calls the corresponding method to handle the interrupt
+        // =============================================================================
         if let Some(ne2k) = NE2000.get() {
             extern "sysv64" fn poll() {
                 loop {
@@ -228,11 +232,14 @@ pub fn rtl8139() -> Option<Arc<Rtl8139>> {
     }
 }
 
+// =============================================================================
 // add ne2000 function
+// =============================================================================
 // safely share access to global, reference-counted nic
 // Once get method : Returns a reference to the inner value if the Once has been initialized.
 // Pattern matching : if some, return the cloned pointer of Ne2000
 // else none
+// =============================================================================
 pub fn ne2000() -> Option<Arc<Ne2000>> {
     match NE2000.get() {
         Some(ne2000) => Some(Arc::clone(ne2000)),
@@ -240,6 +247,12 @@ pub fn ne2000() -> Option<Arc<Ne2000>> {
     }
 }
 
+// =============================================================================
+// function check_interrupts()
+// check for overflow interrupt and receive packet interrupt
+// the trigger function sets the booleans , this function calls
+// the appropriate function to handle the interrupt
+// =============================================================================
 pub fn check_interrupts() {
     let ne2000 = NE2000.get().expect("NE2000 not initialized");
     let device = unsafe { ptr::from_ref(ne2000.deref()).cast_mut().as_mut().unwrap() };
@@ -330,6 +343,7 @@ pub fn get_ip_addresses(host: Option<&str>) -> Vec<IpAddress> {
 
 pub fn open_udp() -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
+    // =============================================================================
     // changed transmit and receive buffer size to tx_size and rx_size
     // IMPORTANT//////
     // Metadata storage limits the maximum number of packets in the buffer
@@ -339,6 +353,7 @@ pub fn open_udp() -> SocketHandle {
     // https://docs.rs/smoltcp/latest/smoltcp/storage/struct.PacketBuffer.html
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
+    // =============================================================================
     let rx_size = 1000;
     let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100000]);
 
@@ -553,7 +568,9 @@ fn pick_port(port: u16) -> u16 {
     }
 }
 
+// =============================================================================
 // poll for ne2k
+// =============================================================================
 
 fn poll_ne2000_tx() {
     // interface is connection between smoltcp crate and driver
@@ -656,6 +673,9 @@ fn poll_ne2000_rx() {
     }
 }*/
 
+// =============================================================================
+//
+// =============================================================================
 fn poll_sockets_ne2k() -> Option<()> {
     let ne2k = NE2000.get().expect("NE2000 not initialized");
     let mut interfaces = INTERFACES.try_write()?;

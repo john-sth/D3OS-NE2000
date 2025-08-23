@@ -2,8 +2,9 @@
 
 ### Constants
 # this is the Linux kernel module that's used for the card
-LINUX_MODULE="foo_core"
+LINUX_MODULE="/lib/modules/6.16.1-arch1-1/kernel/drivers/net/ethernet/8390/ne2k-pci.ko.zst"
 # this is the symlink in /sys/bus/pci/drivers/LINUX_MODULE/
+
 BUS_ID="0123:45:67.8"
 # this can be found with "lspci -nn | grep VENDOR"
 DEVICE_ID="1234 5678"
