@@ -1,6 +1,8 @@
 use crate::device::ne2k::consts::{DEVICE_ID, VENDOR_ID};
-use crate::device::rtl8139::Rtl8139;
+use crate::device::rtl8139::{self, Rtl8139};
+use alloc::borrow::ToOwned;
 use alloc::collections::btree_map::BTreeMap;
+use pci_types::EndpointHeader;
 // add the N2000 driver
 use crate::device::ne2k::ne2000::Ne2000;
 use crate::process::process::Process;
@@ -18,7 +20,7 @@ use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
 use smoltcp::socket::dns::GetQueryResultError;
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
-use smoltcp::wire::{DnsQueryType, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
+use smoltcp::wire::{DnsQueryType, EthernetAddress, HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use spin::{Once, RwLock};
 
 static RTL8139: Once<Arc<Rtl8139>> = Once::new();
@@ -43,169 +45,177 @@ pub enum SocketType {
     Tcp,
     Icmp,
 }
+pub trait NetworkDevice: Sync + Send + 'static {
+    fn id_pair(&self) -> (u16, u16);
+    fn name(&self) -> &'static str;
+    fn new(&self, pci_device: &RwLock<EndpointHeader>) -> Self;
+    fn plugin(self: Arc<Self>);
+    fn read_mac_address(&self) -> EthernetAddress;
+}
+
+impl NetworkDevice for Ne2000 {
+    fn id_pair(&self) -> (u16, u16) {
+        (VENDOR_ID, DEVICE_ID)
+    }
+
+    fn name(&self) -> &'static str {
+        "NE2000"
+    }
+
+    fn new(&self, pci_device: &RwLock<EndpointHeader>) -> Self {
+        Ne2000::new(pci_device)
+    }
+
+    fn plugin(self: Arc<Self>) {
+        Ne2000::assign(self);
+    }
+
+    fn read_mac_address(&self) -> EthernetAddress {
+        Ne2000::get_mac(self)
+    }
+}
+
+impl NetworkDevice for Rtl8139 {
+    fn id_pair(&self) -> (u16, u16) {
+        (0x10ec, 0x8139)
+    }
+
+    fn name(&self) -> &'static str {
+        "RTL8139"
+    }
+
+    fn new(&self, pci_device: &RwLock<EndpointHeader>) -> Self {
+        Rtl8139::new(pci_device)
+    }
+
+    fn plugin(self: Arc<Self>) {
+        Rtl8139::plugin(self);
+    }
+
+    fn read_mac_address(&self) -> EthernetAddress {
+        Rtl8139::read_mac_address(self)
+    }
+}
+
+pub fn init_device<D: NetworkDevice + smoltcp::phy::Device>(device_once: &Once<Arc<D>>) {
+    let (vendor, device_id) = D::id_pair(&self);
+    let devices = pci_bus().search_by_ids(vendor, device_id);
+    if !devices.is_empty() {
+        device_once.call_once(|| {
+            info!("Found {} network controller", device_once.name());
+            let dev = Arc::new(D::new(&self, devices[0]));
+            info!("{} MAC address: {:?}", D::name(), dev.read_mac_address());
+            D::plugin(Arc::clone(&dev));
+            dev
+        });
+    }
+    if let Some(dev) = device_once.get() {
+        extern "sysv64" fn poll() {
+            loop {
+                poll_sockets(dev);
+                // this line slows receive and transmit down! (Johann Spenrath, )
+                //scheduler().sleep(50);
+            }
+        }
+        scheduler().ready(Thread::new_kernel_thread(poll, D::name()));
+
+        // Set up network interface
+        let time = timer().systime_ms();
+        let mut conf = iface::Config::new(HardwareAddress::from(dev.read_mac_address()));
+        conf.random_seed = time as u64;
+
+        // The Smoltcp interface struct wants a mutable reference to the device.
+        // However, the RTL8139 driver is designed to work with shared references.
+        // Since smoltcp does not actually store the mutable reference anywhere,
+        // we can safely cast the shared reference to a mutable one.
+        // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
+        // since it does not modify the device itself.)
+        let device = unsafe { ptr::from_ref(dev.deref()).cast_mut().as_mut().unwrap() };
+        add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
+
+        let sockets = SOCKETS.get().expect("Socket set not initialized!");
+        let current_process = process_manager().read().current_process();
+        let mut process_map = SOCKET_PROCESS.write();
+        // setup DNS
+        DNS_SOCKET.call_once(|| {
+            let dns_socket = dns::Socket::new(&[], Vec::new());
+            let dns_handle = sockets.write().add(dns_socket);
+            process_map
+                .try_insert(dns_handle, current_process.clone())
+                .expect("failed to insert socket into socket-process map");
+            dns_handle
+        });
+        // request an IP address via DHCP
+        DHCP_SOCKET.call_once(|| {
+            let dhcp_socket = dhcpv4::Socket::new();
+            let dhcp_handle = sockets.write().add(dhcp_socket);
+            process_map
+                .try_insert(dhcp_handle, current_process)
+                .expect("failed to insert socket into socket-process map");
+            dhcp_handle
+        });
+    }
+}
 
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
+    init_device(&NE2000);
+    init_device(&RTL8139);
+}
 
-    let enable_rtl8139 = false;
-    let enable_ne2k = true;
+// =============================================================================
+// Register the Ne2000 card here
+// wrap into Arc for shared ownership
+// Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
+// References:
+// - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
+// - https://theretroweb.com/chips/4692 -> device id and vendor id
+// =============================================================================
+// get the EndpointHeader
+// the endpoint header contains essential information about the device,
+// such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
+// perform the initialization only once!
+/*
+info!("\x1b[1;31mFound Realtek 8029 network controller");
+// initialize the driver
+// wrap the instance in an Arc for sharing in a multithreaded context
 
-    if enable_rtl8139 {
-        let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
-        if !devices.is_empty() {
-            RTL8139.call_once(|| {
-                info!("Found Realtek RTL8139 network controller");
-                let rtl8139 = Arc::new(Rtl8139::new(devices[0]));
-                info!("RTL8139 MAC address: [{}]", rtl8139.read_mac_address());
+//read the mac address
+info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.get_mac());
+//enable interrupt handler
+info!("assigned Interrupt handler");
 
-                Rtl8139::plugin(Arc::clone(&rtl8139));
-                rtl8139
-            });
-        }
-
-        if let Some(rtl8139) = RTL8139.get() {
-            extern "sysv64" fn poll() {
-                loop {
-                    poll_sockets();
-                    scheduler().sleep(50);
-                }
-            }
-            scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
-
-            // Set up network interface
-            let time = timer().systime_ms();
-            let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
-            conf.random_seed = time as u64;
-
-            // The Smoltcp interface struct wants a mutable reference to the device.
-            // However, the RTL8139 driver is designed to work with shared references.
-            // Since smoltcp does not actually store the mutable reference anywhere,
-            // we can safely cast the shared reference to a mutable one.
-            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
-            // since it does not modify the device itself.)
-            let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
-            add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
-
-            let sockets = SOCKETS.get().expect("Socket set not initialized!");
-            let current_process = process_manager().read().current_process();
-            let mut process_map = SOCKET_PROCESS.write();
-            // setup DNS
-            DNS_SOCKET.call_once(|| {
-                let dns_socket = dns::Socket::new(&[], Vec::new());
-                let dns_handle = sockets.write().add(dns_socket);
-                process_map
-                    .try_insert(dns_handle, current_process.clone())
-                    .expect("failed to insert socket into socket-process map");
-                dns_handle
-            });
-            // request an IP address via DHCP
-            DHCP_SOCKET.call_once(|| {
-                let dhcp_socket = dhcpv4::Socket::new();
-                let dhcp_handle = sockets.write().add(dhcp_socket);
-                process_map
-                    .try_insert(dhcp_handle, current_process)
-                    .expect("failed to insert socket into socket-process map");
-                dhcp_handle
-            });
-        }
-    }
-
-    // =============================================================================
-    // Register the Ne2000 card here
-    // wrap into Arc for shared ownership
-    // Scans PCI bus for Ne2000 cards or similar by looking at the device id and vendor id.
-    // References:
-    // - https://en.wikibooks.org/wiki/QEMU/Devices/Network -> the nic model
-    // - https://theretroweb.com/chips/4692 -> device id and vendor id
-    // =============================================================================
-    if enable_ne2k {
-        // get the EndpointHeader
-        // the endpoint header contains essential information about the device,
-        // such as the Vendor ID (VID), Device ID (DID), and other configuration parameters
-        let device_ne2k = pci_bus().search_by_ids(VENDOR_ID, DEVICE_ID);
-        if device_ne2k.len() > 0 {
-            // perform the initialization only once!
-            NE2000.call_once(|| {
-                info!("\x1b[1;31mFound Realtek 8029 network controller");
-                // initialize the driver
-                let device = Ne2000::new(device_ne2k[0]);
-                // wrap the instance in an Arc for sharing in a multithreaded context
-                let ne2k = Arc::new(device);
-
-                //read the mac address
-                info!("\x1b[1;31mNe2000 MAC address: [{}]", ne2k.get_mac());
-                //enable interrupt handler
-                Ne2000::assign(Arc::clone(&ne2k));
-                info!("assigned Interrupt handler");
-
-                extern "sysv64" fn poll_interrupts() {
-                    loop {
-                        check_interrupts();
-                    }
-                }
-                scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "check_interrupts"));
-
-                ne2k
-            });
-        }
-        // =============================================================================
-        // create new thread which polls for the fields rcv and ovw
-        // if the trigger method gets called by an packet received
-        // or receive buffer overwrite interrupt, the check method
-        // calls the corresponding method to handle the interrupt
-        // =============================================================================
-        if let Some(ne2k) = NE2000.get() {
-            extern "sysv64" fn poll() {
-                loop {
-                    poll_sockets_ne2k();
-                    //scheduler().sleep(50);
-                }
-            }
-            scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
-            // return the instance
-            //ne2k
-            // Set up network interface
-            // if NE2000 is initialized, start a new thread,
-            // which calls poll_ne2000 in an infinite loop
-            // the method checks for any outgoing or incoming packages in the buffers of
-            // the device or in the buffers of the sockets
-            let time = timer().systime_ms();
-            let mut conf = iface::Config::new(HardwareAddress::from(ne2k.get_mac()));
-            conf.random_seed = time as u64;
-
-            // The Smoltcp interface struct wants a mutable reference to the device.
-            // However, the RTL8139 driver is designed to work with shared references.
-            // Since smoltcp does not actually store the mutable reference anywhere,
-            // we can safely cast the shared reference to a mutable one.
-            // (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
-            // since it does not modify the device itself.)
-            let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
-            add_interface(Interface::new(conf, device, Instant::from_millis(time as i64)));
-
-            let sockets = SOCKETS.get().expect("Socket set not initialized!");
-            let current_process = process_manager().read().current_process();
-            let mut process_map = SOCKET_PROCESS.write();
-            // setup DNS
-            DNS_SOCKET.call_once(|| {
-                let dns_socket = dns::Socket::new(&[], Vec::new());
-                let dns_handle = sockets.write().add(dns_socket);
-                process_map
-                    .try_insert(dns_handle, current_process.clone())
-                    .expect("failed to insert socket into socket-process map");
-                dns_handle
-            });
-            // request an IP address via DHCP
-            DHCP_SOCKET.call_once(|| {
-                let dhcp_socket = dhcpv4::Socket::new();
-                let dhcp_handle = sockets.write().add(dhcp_socket);
-                process_map
-                    .try_insert(dhcp_handle, current_process)
-                    .expect("failed to insert socket into socket-process map");
-                dhcp_handle
-            });
-        }
+extern "sysv64" fn poll_interrupts() {
+    loop {
+        check_interrupts();
     }
 }
+scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "check_interrupts"));
+*/
+
+// =============================================================================
+// create new thread which polls for the fields rcv and ovw
+// if the trigger method gets called by an packet received
+// or receive buffer overwrite interrupt, the check method
+// calls the corresponding method to handle the interrupt
+// =============================================================================
+//scheduler().sleep(50);
+// return the instance
+//ne2k
+// Set up network interface
+// if NE2000 is initialized, start a new thread,
+// which calls poll_ne2000 in an infinite loop
+// the method checks for any outgoing or incoming packages in the buffers of
+// the device or in the buffers of the sockets
+// The Smoltcp interface struct wants a mutable reference to the device.
+// However, the RTL8139 driver is designed to work with shared references.
+// Since smoltcp does not actually store the mutable reference anywhere,
+// we can safely cast the shared reference to a mutable one.
+// (Actually, I am not sure why the smoltcp interface wants a mutable reference to the device,
+// since it does not modify the device itself.)
+
+// setup DNS
+// request an IP address via DHCP
 
 fn check_ownership(handle: SocketHandle) {
     // TODO: these panics should probably kill the process that made the call, not the kernel
@@ -230,6 +240,17 @@ pub fn rtl8139() -> Option<Arc<Rtl8139>> {
         Some(rtl8139) => Some(Arc::clone(rtl8139)),
         None => None,
     }
+}
+
+//pub fn get_device<D: NetworkDevice>() -> Option<Arc<D>> {
+pub fn get_device() -> Option<Arc<dyn NetworkDevice>> {
+    if let Some(dev) = NE2000.get() {
+        return Some(dev.clone());
+    }
+    if let Some(dev) = RTL8139.get() {
+        return Some(dev.clone());
+    }
+    None
 }
 
 // =============================================================================
@@ -354,11 +375,11 @@ pub fn open_udp() -> SocketHandle {
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
-    let rx_size = 3000;
+    let rx_size = 1000;
     let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100000]);
 
-    let tx_size = 3000;
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 10000 * tx_size]);
+    let tx_size = 1999;
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 60 * tx_size]);
 
     let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
@@ -495,15 +516,24 @@ pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpA
 /// This returns None, if it failed to get all needed locks.
 /// This is needed, because we otherwise might get a deadlock, because an
 /// application has the lock on `sockets` while we have the lock on `interfaces`.
-fn poll_sockets() -> Option<()> {
-    let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
+/// Johann Spenrath on 27.08.2025:
+/// implement trait smoltcp::phy::Device for D
+fn poll_sockets<D: NetworkDevice + smoltcp::phy::Device>(device_once: &Once<Arc<D>>) -> Option<()> {
+    // Johann Spenrath on 27.08.2025
+    // https://stackoverflow.com/questions/30154541/how-do-i-concatenate-strings
+    //
+    let mut msg = D::name().to_owned();
+    let borrowed_string: &str = " not initialized";
+    msg.push_str(borrowed_string);
+
+    let dev = device_once.get().expect(msg.as_str());
     let mut interfaces = INTERFACES.try_write()?;
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
     let time = Instant::from_millis(timer().systime_ms() as i64);
 
     // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
-    let device = unsafe { ptr::from_ref(rtl8139.deref()).cast_mut().as_mut().unwrap() };
+    let device = unsafe { ptr::from_ref(dev.deref()).cast_mut().as_mut().unwrap() };
 
     let interface = interfaces.get_mut(0).expect("failed to get interface");
     interface.poll(time, device, &mut sockets);
@@ -572,7 +602,7 @@ fn pick_port(port: u16) -> u16 {
 // poll for ne2k
 // =============================================================================
 
-pub fn poll_ne2000_tx() {
+fn poll_ne2000_tx() {
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
@@ -603,7 +633,7 @@ pub fn poll_ne2000_tx() {
     }
 }
 
-pub fn poll_ne2000_rx() {
+fn poll_ne2000_rx() {
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
@@ -676,7 +706,7 @@ pub fn poll_ne2000_rx() {
 // =============================================================================
 //
 // =============================================================================
-pub fn poll_sockets_ne2k() -> Option<()> {
+fn poll_sockets_ne2k() -> Option<()> {
     let ne2k = NE2000.get().expect("NE2000 not initialized");
     let mut interfaces = INTERFACES.try_write()?;
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;

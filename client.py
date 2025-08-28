@@ -4,6 +4,8 @@ import os
 import socket
 import time
 
+BUFFER_SIZE = 65535
+
 def send_packets(host: str,
                  port: int,
                  payload_size: int = 1200,
@@ -23,23 +25,38 @@ def send_packets(host: str,
         raise ValueError("payload_size must be at least 4 bytes (to hold the 4-byte sequence).")
 
     addr = (host, port)
+
+    local_address = "127.0.0.1"
+    port = 12345
+    client_address = (local_address, port)
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2.0)
+    #sock.settimeout(2.0)
+    sock_rec = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock_rec.bind(client_address)
+
 
     if connect_mode:
         # Optional but faster: avoids passing addr on every send
         sock.connect(addr)
+    
 
     # --- Handshake ---
-    init = b"Init"
-    sock.send(init) if connect_mode else sock.sendto(init, addr)
-    try:
-        data = sock.recv(1024) if connect_mode else sock.recvfrom(1024)[0]
-    except socket.timeout:
-        print("No echo from server after 'Init' (timeout). You can still send, but the server may not be ready.")
-    else:
-        if data.strip() == init:
+    init = b"Init\n"
+    #sock.send(init) if connect_mode else sock.sendto(init, client_address)
+    sock.sendto(init, addr)
+    #try:
+    while True:
+        data, address = sock_rec.recvfrom(BUFFER_SIZE)
+        if not data:
+            continue
+    #data = sock.recv(1024) if connect_mode else sock.recvfrom(1024)[0]
+    #except socket.timeout:
+        #print("No echo from server after 'Init' (timeout). You can still send, but the server may not be ready.")
+    #else:
+        if data.strip() == b"Init":
             print("Handshake OK (server echoed 'Init').")
+            break
         else:
             print(f"Unexpected handshake reply: {data!r}")
 
@@ -70,8 +87,10 @@ def send_packets(host: str,
             payload = header + (os.urandom(payload_size - 4) if payload_size > 4 else b"")
             if connect_mode:
                 sock.send(payload)
+                #time.sleep(0.2)
             else:
                 sock.sendto(payload, addr)
+                #time.sleep(0.2)
 
             sent += 1
             bytes_sent += len(payload)

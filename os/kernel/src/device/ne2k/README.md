@@ -4,9 +4,11 @@
 +-+-+-+-+-+-+
 ```
 
+# NE2000 Network Card Driver for D3OS
+
 ## TODO:
 
-# NE2000 Network Card Driver for D3OS
+### for the driver
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
@@ -21,6 +23,27 @@
 - [x] check if the ovwe bit gets actually set at the initialization of the nic
 - [x] check if packets bigger than max. Ethernet size don't get processed in the receive method and if so do the same for smoltcp so that no buffer gets enqueued
 - [x] check network/mod.rs open_socket() for transmit and rx size for packetbuffer
+
+### for the presentation
+
+- use class diagram
+- one page for d3os, purpose, name rtl8139 card, network features
+- ne2000 architecture, get the information from the thesis:
+  - general information about the card + image
+  - page registers
+  - fifo
+  - ring buffer
+- the driver:
+  - init procedure (just explain that certain registers get set)
+  - explain in short smoltcp Token logic
+  - and Interrupts of the NIC
+  - send and receive part
+  - overflow function
+- evaluation and benchmarks
+  - show maybe a table of transmission rate
+  - if possible create video/gif recording
+    from pyplot for the transmission rate
+  - talk about results and further things which could be implemented
 
 ## Files edited
 

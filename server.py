@@ -12,21 +12,23 @@ import sys
 from datetime import datetime, timedelta
 import time
 
+BUFFER_SIZE = 4_096_000
 
 def receive_traffic(sock): 
-    packet_count = 0
-    #buffer size 
-    buffer_size = 4096000
 
+    packet_count = 0
     packets_received = 0
     packets_out_of_order = 0
     duplicated_packets = 0
-    bytes_received = 0
+
     current_packet_number = None
     previous_packet_number = 0
     interval_counter = 0
+
+    bytes_received = 0
     bytes_received_in_interval = 0
     bytes_received_total = 0
+
 
     # Create a UDP socket
     #socket_handle = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -35,49 +37,97 @@ def receive_traffic(sock):
     #socket_handle.bind(server_address)
     #print(f"## server is listening from {ip} on Port {port} ")
 
-    data, address = sock.recvfrom(buffer_size) 
-    if not data:
+    # =====================================================================
+    # Step 1: get the first packet
+    # then start the 
+    # =====================================================================
+    payload, address = sock.recvfrom(BUFFER_SIZE) 
+    if not payload:
         return 
 
 
+
+    # =================================
+    # Display the current time at start
+    # =================================
     print(f"start: {datetime.now().time()}")
+
     seconds_passed = int(time.time()) + 1
 
-    received_message = data
-
+    # =================================
+    # set packets_received +1 for the 
+    # first received packet
+    # save the first 4 byte in 
+    # previous_packet_number
+    # =================================
     packets_received += 1
-    previousPacketNumber = (received_message[0] << 24) + (received_message[1] << 16) + (received_message[2] << 8) + received_message[3];
-    bytes_received_in_interval = len(data)
 
-    #seconds_passed = int(time.time() + 1)
-    #print("\n\n 2. Server received: ", data.decode('utf-8'), "\n\n")
+    previous_packet_number = (payload[0] << 24) + (payload[1] << 16) + (payload[2] << 8) + payload[3]
+    bytes_received_in_interval = len(payload)
+
+    # =====================================================================
+    # Receive packets until an exit msg is send
+    # =====================================================================
     while True:
-        # extract data payload and address from where the packet was sent
-        #try:
-        data, address = sock.recvfrom(buffer_size) 
+
+        # =================================
+        # extract data payload and address 
+        # from where the packet was sent
+        # if msg = exit: end the receive loop
+        # =================================
+        data, address = sock.recvfrom(BUFFER_SIZE) 
         if data.strip() == b"exit":
             break
 
+        received_message = data
+
+        # =================================
+        # count the number of packets received
+        # in each iteration
+        # =================================
         packets_received += 1
         current_packet_number = (received_message[0] << 24) + (received_message[1] << 16) + (received_message[2] << 8) + received_message[3];
 
+        packet_bytes = received_message[:4]
+        packet_number = int.from_bytes(packet_bytes, byteorder='big')
+        print(f"Parsed packet number: {packet_number}")
+
+        # =================================
+        # compare previous with current packet
+        # if packet numbers equal then, the 
+        # packet has been retransmitted
+        # =================================
         if current_packet_number == previous_packet_number:
             duplicated_packets += 1
         
+        # =================================
+        # check if the current packet 
+        # has arrived in the wrong order
+        # =================================
         elif current_packet_number != (previous_packet_number+1) or current_packet_number < previous_packet_number:
             packets_out_of_order += 1
 
+
+        # =================================
+        # update the packet
+        # =================================
         previous_packet_number = current_packet_number
         bytes_received_in_interval = bytes_received_in_interval + len(data)
 
+
+        # =================================
+        # write current bytes per second
+        # =================================
         if seconds_passed <= int(time.time()):
             print(f"{interval_counter}-{interval_counter + 1}: {bytes_received_in_interval / 1000} KB/s")
             interval_counter += 1
             bytes_received = bytes_received + bytes_received_in_interval
+            # reset bytes received 
             bytes_received_in_interval = 0
+            # set to next second passed
             seconds_passed +=1
     
-    bytes_received_total = bytes_received + bytes_received_in_interval
+    bytes_received = bytes_received + bytes_received_in_interval
 
     print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
     print(f"Received exit: End reception")
@@ -85,7 +135,6 @@ def receive_traffic(sock):
     print(f"Number of packets received : {packets_received}")
     print(f"Total bytes received       : {bytes_received_total}")
     print(f"Bytes received             : {bytes_received / 1000} KB/s")
-    print(f"Bytes received             : {bytes_received } B/s")
     print(f"Average Bytes received     : {(bytes_received / (interval_counter+1)) / 1000} KB/s")
     print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
     print(f"duplicated packets         : {duplicated_packets}")
@@ -99,13 +148,12 @@ def receive_traffic(sock):
 
 def server(sock, local_address):
 
-    buffer_size = 409600
     # Print the local address (currently hardcoded)
     print(f"nettest: server listening on {local_address}! Send 'exit' to leave.")
     print("Do Ctrl+c to exit the program !!")
 
     while True:
-        data, address = sock.recvfrom(buffer_size)
+        data, address = sock.recvfrom(BUFFER_SIZE)
         if not data:
             continue
 

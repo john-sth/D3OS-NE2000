@@ -9,5 +9,5 @@
 
 pub mod benchmark;
 pub mod consts;
+pub mod device_smoltcp;
 pub mod ne2000;
-pub mod network_stack;

@@ -52,7 +52,7 @@ use x86_64::structures::paging::{Page, PageTableFlags};
 use super::consts::page_registers_offsets::*;
 use super::consts::*;
 // smoltcp configuration
-use super::network_stack::*;
+use super::device_smoltcp::*;
 use crate::device::ne2k::consts;
 
 // =============================================================================
@@ -473,7 +473,7 @@ impl Ne2000 {
             info!("\x1b[1;31mFinished Initialization");
             // print an ascii banner to the log screen
             info!(include_str!("banner.txt"), ne2000.get_mac(), base_address);
-            scheduler().sleep(1000);
+            //scheduler().sleep(1000);
 
             ne2000
         }
@@ -604,6 +604,7 @@ impl Ne2000 {
             // Clear ISR RDC Interrupt Bit
             self.registers.isr_port.lock().write(InterruptStatusRegister::ISR_RDC.bits());
 
+            //==== STEP 8 ====//
             // Set TBCR Bits before Transmit and TPSR Bit
             // TBCR0,1 : registers indicate the length of the packet
             // to be transmitted in bytes
@@ -613,6 +614,7 @@ impl Ne2000 {
             self.registers.page0.tbcr_1_port_p0.write(high);
             self.registers.page0.tpsr_port.write(TRANSMIT_START_PAGE);
 
+            //==== STEP 9 ====//
             // disable remote read, start nic, set TXP Bit in CR to send packet
             // during transmission the nic writes data into the fifo
             // transmit serializer reads the data from the fifo and transmits it
