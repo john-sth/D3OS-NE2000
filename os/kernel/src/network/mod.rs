@@ -355,10 +355,11 @@ pub fn open_udp() -> SocketHandle {
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
     let rx_size = 3000;
-    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100000]);
+    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
 
     let tx_size = 3000;
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 10000 * tx_size]);
+    // todo check with debugger, when doing receive benchmark memory allocation error with great values
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
 
     let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS

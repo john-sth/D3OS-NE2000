@@ -88,9 +88,9 @@ def receive_traffic(sock):
         packets_received += 1
         current_packet_number = (received_message[0] << 24) + (received_message[1] << 16) + (received_message[2] << 8) + received_message[3];
 
-        packet_bytes = received_message[:4]
-        packet_number = int.from_bytes(packet_bytes, byteorder='big')
-        print(f"Parsed packet number: {packet_number}")
+        #packet_bytes = received_message[:4]
+        #packet_number = int.from_bytes(packet_bytes, byteorder='big')
+        #print(f"Parsed packet number: {packet_number}")
 
         # =================================
         # compare previous with current packet
@@ -118,7 +118,7 @@ def receive_traffic(sock):
         # =================================
         # write current bytes per second
         # =================================
-        if seconds_passed <= int(time.time()):
+        if seconds_passed < int(time.time()):
             print(f"{interval_counter}-{interval_counter + 1}: {bytes_received_in_interval / 1000} KB/s")
             interval_counter += 1
             bytes_received = bytes_received + bytes_received_in_interval
@@ -128,6 +128,7 @@ def receive_traffic(sock):
             seconds_passed +=1
     
     bytes_received = bytes_received + bytes_received_in_interval
+    average_bytes = (bytes_received / (interval_counter + 1)) / 100
 
     print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
     print(f"Received exit: End reception")
@@ -135,7 +136,7 @@ def receive_traffic(sock):
     print(f"Number of packets received : {packets_received}")
     print(f"Total bytes received       : {bytes_received_total}")
     print(f"Bytes received             : {bytes_received / 1000} KB/s")
-    print(f"Average Bytes received     : {(bytes_received / (interval_counter+1)) / 1000} KB/s")
+    print(f"Average Bytes received     : {average_bytes} KB/s")
     print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
     print(f"duplicated packets         : {duplicated_packets}")
     #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")

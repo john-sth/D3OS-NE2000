@@ -37,7 +37,7 @@ def send_packets(host: str,
 
 
     if connect_mode:
-        # Optional but faster: avoids passing addr on every send
+        #avoids passing addr on every send
         sock.connect(addr)
     
 
@@ -107,7 +107,7 @@ def send_packets(host: str,
                     next_send_time = time.time()
     finally:
         # Tell server to stop
-        stop_msg = b"exit"
+        stop_msg = b"exit\n"
         try:
             sock.send(stop_msg) if connect_mode else sock.sendto(stop_msg, addr)
         except Exception:

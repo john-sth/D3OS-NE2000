@@ -753,8 +753,8 @@ impl Ne2000 {
                 if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
-                    let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
-                    info!("Packet No. {}", old_thread_count);
+                    //let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
+                    //info!("Packet No. {}", old_thread_count);
 
                     // get an empty packet from the receive_buffers_empty queue for
                     // saving the data

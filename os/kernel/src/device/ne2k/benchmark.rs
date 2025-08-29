@@ -11,8 +11,9 @@ use crate::scheduler;
 use crate::{network, timer};
 use alloc::string::String;
 use alloc::vec;
-use log::{LevelFilter, debug, info, warn};
+use log::{LevelFilter, debug, error, info, warn};
 use smoltcp::iface::SocketHandle;
+use smoltcp::socket::udp::RecvError;
 use smoltcp::socket::udp::SendError;
 use smoltcp::time::Instant;
 use smoltcp::wire::IpEndpoint;
@@ -107,7 +108,7 @@ pub fn udp_send_traffic(n: usize, interval: u16, packet_length: u16) -> Result<(
         bytes_sent_in_interval += packet_length;
 
         // if a second passes print the current stats at the screen
-        if seconds_passed <= timer().systime_ms() {
+        if seconds_passed < timer().systime_ms() {
             info!(
                 "{} - {} : {} KB/s",
                 interval_counter,
@@ -208,7 +209,7 @@ pub fn run_udp_server() -> Result<(), &'static str> {
 
     // wait for a connection request from the client
     let mut buf = vec![0; packet_length as usize];
-    let deadline = crate::timer().systime_ms() + 5_000; // 20s timeout
+    let deadline = crate::timer().systime_ms() + 20_000; // 20s timeout
     let sock = network::open_udp();
     let sock_send = network::open_udp();
     network::bind_udp(sock, source_ip, listening_port);
@@ -217,11 +218,11 @@ pub fn run_udp_server() -> Result<(), &'static str> {
     info!("waiting for Init response.");
 
     loop {
-        if crate::timer().systime_ms() > deadline {
-            network::close_socket(sock);
-            info!("timeout waiting for Init response");
-            return Err("timeout waiting for Init response");
-        }
+        //if crate::timer().systime_ms() > deadline {
+        //    network::close_socket(sock);
+        //    info!("timeout waiting for Init response");
+        //    return Err("timeout waiting for Init response");
+        //}
 
         if let Ok((size, meta)) = network::receive_datagram(sock, &mut buf) {
             let recv_data = &buf[..size];
@@ -241,6 +242,7 @@ pub fn run_udp_server() -> Result<(), &'static str> {
             }
         }
         //info!("poll ended");
+        network::poll_ne2000_rx();
     }
 }
 
@@ -257,6 +259,16 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     let mut bytes_received_total: usize = 0;
     let mut seconds_passed = 0;
 
+    //this lead to an error in which no packet was received now it works, when just passing the socket
+    // from the calling method
+    //let source_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 15));
+    //let dest_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 2));
+    //let listening_port = 1798;
+    //let sending_port = 12345;
+    //let sock = network::open_udp();
+
+    //network::bind_udp(sock, source_ip, listening_port);
+
     // receive the first packet
     // then start the timer
 
@@ -264,11 +276,11 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     let deadline = timer().systime_ms() + 5_000; // set 5s deadline for packet to arrive
     info!("waiting for first packet ");
     loop {
-        if crate::timer().systime_ms() > deadline {
-            network::close_socket(sock);
-            return Err("timeout waiting for first packet ");
-            //("timeout waiting for first packet");
-        }
+        //if crate::timer().systime_ms() > deadline {
+        //network::close_socket(sock);
+        //return Err("timeout waiting for first packet ");
+        //("timeout waiting for first packet");
+        //}
 
         if let Ok((size, meta)) = network::receive_datagram(sock, &mut buf) {
             // rec_data is of type u8 which would overflow -> cast recv_data in previous and current to u32
@@ -285,33 +297,48 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
             bytes_received_in_interval = size;
             break;
         }
+        network::poll_ne2000_rx();
     }
 
     // receive packets until an exit msg is send
     loop {
-        let size = network::receive_datagram(sock, &mut buf).unwrap().0;
-        let recv_data = &buf[..size];
-        if recv_data == b"exit\n" {
-            break;
+        //let size = network::receive_datagram(sock, &mut buf).unwrap().0;
+        match network::receive_datagram(sock, &mut buf) {
+            Ok((size, _meta)) => {
+                let recv_data = &buf[..size];
+                if recv_data == b"exit\n" {
+                    break;
+                }
+
+                packets_received += 1;
+                // cast to u8 because of overflow error thrown by compiler
+                current_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+
+                //current_packet_number =
+                //(recv_data[0] >> 24 & 0xFF) as u32 + (recv_data[1] >> 16 & 0xFF) as u32 + (recv_data[2] >> 8 & 0xFF) as u32 + (recv_data[3] & 0xFF) as u32;
+
+                if current_packet_number == previous_packet_number {
+                    duplicated_packets += 1;
+                } else if current_packet_number != (previous_packet_number + 1) || current_packet_number < previous_packet_number {
+                    packets_out_of_order += 1;
+                }
+
+                previous_packet_number = current_packet_number;
+                bytes_received_in_interval += size;
+            }
+            Err(RecvError::Exhausted) => {
+                // Nothing ready yet — just wait and retry
+                scheduler().sleep(1); // or network::poll() if appropriate
+                continue;
+            }
+            Err(e) => {
+                error!("Receive failed: {:?}", e);
+                scheduler().sleep(1);
+                continue;
+            }
         }
 
-        packets_received += 1;
-        // cast to u8 because of overflow error thrown by compiler
-        current_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
-
-        //current_packet_number =
-        //(recv_data[0] >> 24 & 0xFF) as u32 + (recv_data[1] >> 16 & 0xFF) as u32 + (recv_data[2] >> 8 & 0xFF) as u32 + (recv_data[3] & 0xFF) as u32;
-
-        if current_packet_number == previous_packet_number {
-            duplicated_packets += 1;
-        } else if current_packet_number != (previous_packet_number + 1) || current_packet_number < previous_packet_number {
-            packets_out_of_order += 1;
-        }
-
-        previous_packet_number = current_packet_number;
-        bytes_received_in_interval += size;
-
-        if seconds_passed <= timer().systime_ms() {
+        if seconds_passed < timer().systime_ms() {
             info!("{} - {}: {} KB/s", interval_counter, interval_counter + 1, bytes_received_in_interval / 1000);
             interval_counter += 1;
             bytes_received += bytes_received_in_interval;
