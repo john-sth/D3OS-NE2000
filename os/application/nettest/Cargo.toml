@@ -19,6 +19,7 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
     "proto-ipv4",
     "socket-udp",
 ] }
+chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
 # Local dependencies
 terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }

@@ -72,6 +72,8 @@ pub fn init() {
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
 
+            //scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "check_interrupts"));
+
             // Set up network interface
             let time = timer().systime_ms();
             let mut conf = iface::Config::new(HardwareAddress::from(rtl8139.read_mac_address()));
@@ -143,7 +145,7 @@ pub fn init() {
                         check_interrupts();
                     }
                 }
-                scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "check_interrupts"));
+                scheduler().ready(Thread::new_kernel_thread(poll_interrupts, "NE2K: check_interrupts"));
 
                 ne2k
             });
@@ -354,10 +356,10 @@ pub fn open_udp() -> SocketHandle {
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
-    let rx_size = 3000;
+    let rx_size = 5000;
     let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
 
-    let tx_size = 3000;
+    let tx_size = 5000;
     // todo check with debugger, when doing receive benchmark memory allocation error with great values
     let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
 
@@ -688,7 +690,9 @@ pub fn poll_sockets_ne2k() -> Option<()> {
     let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
 
     let interface = interfaces.get_mut(0).expect("failed to get interface");
+    //interface.poll(time, device, &mut sockets);
     interface.poll(time, device, &mut sockets);
+
     // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
     let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
     let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
