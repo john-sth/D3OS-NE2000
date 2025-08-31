@@ -335,16 +335,16 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
         || benchmark::udp_recv_test(),
         "udp_rx",
     ));*/
-    extern "sysv64" fn benchmark() {
-        //loop {
-        //benchmark::udp_send_packets("127.0.0.1", 12345, 1200, Some(1000), Some(100.0), None);
-        //benchmark::udp_send_test(2000);
-        //benchmark::run_tcp_client("10.0.2.2", 12345, 2);
-        //benchmark::run_udp_client("10.0.2.2", 12345);
-        //benchmark::run_udp_server();
-        //}
-    }
-    scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));
+    //extern "sysv64" fn benchmark() {
+    //loop {
+    //benchmark::udp_send_packets("127.0.0.1", 12345, 1200, Some(1000), Some(100.0), None);
+    //benchmark::udp_send_test(2000);
+    //benchmark::run_tcp_client("10.0.2.2", 12345, 2);
+    //benchmark::run_udp_client("10.0.2.2", 2000);
+    //benchmark::run_udp_server();
+    //}
+    //}
+    //scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));
 
     //=================================================================
     // spawn the TX thread

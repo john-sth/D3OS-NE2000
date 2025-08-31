@@ -51,6 +51,10 @@
   - how to find kernel module : modinfo ne2k-pci
   - bus id: lspci -nnk | grep -A3 -i ne2k-pci
 - consts.rs : increase kernel_heap_size
+- boot.rs
+- network/mod.rs
+- os : Makefile.toml
+  Cargo.toml
 
 ## Reason for slirp errors:
 

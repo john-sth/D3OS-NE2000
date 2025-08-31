@@ -1109,13 +1109,9 @@ impl InterruptHandler for Ne2000InterruptHandler {
 
         // check for a buffer overflow, OVW Bit set ?
         if status.contains(InterruptStatusRegister::ISR_OVW) {
-            // TODO: remove
-            info!("overflow trigger");
-            unsafe {
-                // set ovw to true, this triggers the check() function in network/mod.rs
-                // which calls the handle_overflow function and resets the value at the end
-                self.device.check_interrupts.ovw.store(true, Ordering::Relaxed);
-            }
+            // set ovw to true, this triggers the check() function in network/mod.rs
+            // which calls the handle_overflow function and resets the value at the end
+            self.device.check_interrupts.ovw.store(true, Ordering::Relaxed);
         }
 
         // re-enable Interrupts (22.07.2025)

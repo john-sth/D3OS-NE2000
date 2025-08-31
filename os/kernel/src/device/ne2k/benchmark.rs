@@ -64,7 +64,7 @@ use network::bind_udp;
 // new version doesn’t crash because it handles backpressure (BufferFull) by polling/yielding and retrying instead of panicking.
 
 pub fn udp_send_traffic(n: usize, interval: u16, packet_length: u16) -> Result<(), &'static str> {
-    let dst_port = 12345;
+    let dst_port = 2000;
     let sock = network::open_udp();
     let dst_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 2));
     let mut bytes_sent_in_interval = 0;

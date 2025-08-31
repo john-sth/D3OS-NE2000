@@ -1,5 +1,5 @@
 ## =============================================================================
-## FILE        : benchmark.rs
+## FILE        : server.py
 ## AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 ## DESCRIPTION : functions for sending and receiving packets and printing stats
 ## =============================================================================
@@ -175,7 +175,7 @@ def main():
 
     # set the arguments for the server_address
     local_address = "127.0.0.1"
-    port = 12345
+    port = 2000 
 
     server_address = (local_address, port)
 
@@ -194,23 +194,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-#def kb_bar(kb, scale=200):  # 200 KB per block (tweak)
-#    blocks = int(max(1, kb) / scale)
-#    return "█" * min(blocks, 60)  # cap width
-## get the arguments
-#if len(sys.argv) == 3:
-#    # Get "IP address of Server" and also the "port number" from argument 1 and argument 2
-#    ip = sys.argv[1]
-#    port = int(sys.argv[2])
-#else:
-#    print("Run like : python3 server.py <arg1:server ip:this system IP 192.168.1.6> <arg2:server port:4444 >")
-#    exit(1)
-#
-#
-#
-##while True:
-##    data, address = socket_handle.recvfrom(buffer_size)
-##    if data.getData().decode().strip() == "Init":
-##        receive_traffic()
