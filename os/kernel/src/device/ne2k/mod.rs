@@ -1,5 +1,6 @@
 // =============================================================================
 // FILE        : mod.rs
+// MODULE      : ne2k
 // AUTHOR      : Johann Spenrath
 // DESCRIPTION : define files which belong to the module
 // =============================================================================

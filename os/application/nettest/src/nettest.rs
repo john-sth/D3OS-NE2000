@@ -19,9 +19,9 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 use chrono::{self, TimeDelta};
-use concurrent::thread;
+use concurrent::{process, thread};
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use network::get_ip_addresses;
+use network::{NetworkError, get_ip_addresses};
 #[allow(unused_imports)]
 use network::{TcpListener, TcpStream, UdpSocket, resolve_hostname};
 use runtime::*;
@@ -31,8 +31,6 @@ use smoltcp::wire::{IpEndpoint, UDP_HEADER_LEN};
 use terminal::{print, println, read::read};
 use time;
 
-#[derive(Debug)]
-pub enum NetworkError {/* align with your definition */}
 enum Socket {
     Udp(UdpSocket),
     //Tcp(TcpStream),
@@ -56,8 +54,8 @@ fn main() {
     // =============================================================================
     // define the default packet length
     // =============================================================================
-    //let paload_length: u16 = 64;
     let payload_length: u16 = 256;
+    //let payload_length: u16 = 256;
 
     // =============================================================================
     // open and bind udp socket to local address of the Host
@@ -185,7 +183,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // create the packet
     // ======================================
     //let mut buf = vec![0; packet_length as usize];
-    let mut buf = vec![0; 1024 as usize];
+    let mut buf = vec![0; packet_length as usize];
 
     let mut packet = UdpPacket::new_unchecked(&mut buf);
     packet.set_len(packet_length);
@@ -225,7 +223,18 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
         buf[3] = (packets_send & 0xff) as u8;
 
         // send the packet
-        UdpSocket::send_to(&socket, &buf, dest_addr).expect("failed to send over UDP");
+        //UdpSocket::send_to(&socket, &buf, dest_addr).expect("failed to send over UDP");
+        loop {
+            match UdpSocket::send_to(&socket, &buf, dest_addr) {
+                Ok(_) => break,
+                Err(e) => {
+                    //println!("Send busy, sleeping briefly...");
+                    //scheduler().sleep(1);
+                    //thread::sleep();
+                }
+            }
+        }
+        //UdpSocket::send_to(&socket, &buf, dest_addr).expect("failed to send message!");
 
         // ======================================
         // count bytes send in each second
@@ -255,6 +264,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
         }
         //TODO:
         //scheduler().sleep(0.001); // e.g., sleep 1 ms, adjust accordingly
+        //thread::sleep(1);
     }
     // ======================================
     // after the end of the time_inverval send
@@ -262,7 +272,16 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // to signal end of transmission
     // ======================================
     let end_datagram: &[u8] = b"exit\n";
-    UdpSocket::send_to(&socket, &end_datagram, dest_addr).expect("failed to send end message");
+    loop {
+        match UdpSocket::send_to(&socket, &end_datagram, dest_addr) {
+            Ok(_) => break,
+            Err(e) => {
+                println!("Send busy, sleeping briefly...");
+                //scheduler().sleep(1);
+            }
+        }
+    }
+    //UdpSocket::send_to(&socket, &end_datagram, dest_addr).expect("failed to send end message");
 
     // ======================================
     // get the total number of bytes send in

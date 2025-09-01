@@ -12,12 +12,17 @@
 
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
-- [ ] create flowchart for qemu network
 - [ ] add a list of modified and used files in the OS
-- [ ] check the ne2000.cpp impl
+- [ ] create the presentation
+- [ ] nettest send benchmark create table
+- [ ] nettest receive benchmark create table
+- [ ] nettest for rtl8139?
+- [ ] clean up code
+
+- [x] rewrite of nettest application in rust
+- [x] create flowchart for qemu network
 - [x] rewrite the call for receive and overflow with AtomicBool values
 - [x] check overwrite method
-- [ ] rewrite of nettest application in rust
 - [x] check boundaries for receive buffer
 - [x] check page size page buffer
 - [x] check if the ovwe bit gets actually set at the initialization of the nic
@@ -47,6 +52,18 @@
 
 ## Files edited
 
+- ROOT DIR:
+  - Cargo.toml: added nettest
+  - added nettest.py and netcat.sh for testing
+  - configured qemu-pci.sh for rtl8029as
+- KERNEL:
+
+  - Device : added module ne2k, modified mod.rs
+  - network: modified mod.rs, added support for ne2000
+  - boot.rs : comments in the section network, old code
+    - threads for starting network benchmark tests
+  - consts.rs : increased the kernel heap page size
+
 - qemu-pci.sh : added device and vendor id
   - how to find kernel module : modinfo ne2k-pci
   - bus id: lspci -nnk | grep -A3 -i ne2k-pci
@@ -68,15 +85,16 @@
 
 - Oversized buffers can reduce throughput. There’s even an open smoltcp issue showing a “sweet spot” where increasing buffer sizes past a point hurts performance due to extra work and cache pressure.
 
-- Symptom on the host: SLIRP will complain (e.g., “Failed to send packet, ret: -1”) when it can’t keep up; people see these messages even with otherwise functional traffic. Reducing RX queue shortened each poll cycle, letting TX keep pace and avoiding SLIRP’s error path.
+- Symptom on the host: SLIRP will complain (e.g., “Failed to send packet, ret: -1”) when it can’t keep up.
+- Reducing RX queue shortened each poll cycle, letting TX keep pace and avoiding SLIRP’s error path.
 
-- So the improvement after dropping rx_size to 2 is backpressure by design:
+- improvement : dropping rx_size to 2 :
 
 - guest now drops excess inbound datagrams earlier (socket RX buffer fills quickly),
 - which makes each poll() iteration shorter,
 - which gives more CPU to egress,
 - which reduces the burst pressure on SLIRP and avoids its send‑fail log spam.
-- Keep RX modest, find a middle ground that matches poll rate. The smoltcp bug thread suggests there’s an “ideal” size—measure and tune.
+- Keep RX modest, find a middle ground that matches poll rate.
 - Increase TX payload slab (total bytes) rather than cranking metadata counts, and poll more frequently (or use poll_delay() for tight pacing). That helps TX drain smoothly without starving the system.
 - For serious throughput tests, switch QEMU from SLIRP to tap/bridge networking; it bypasses SLIRP’s userspace NAT bottleneck. QEMU’s docs call out the backend options.
 - TL;DR: smaller RX limited per‑tick ingress work, unblocked TX, and side‑stepped SLIRP’s bottleneck—so your bursts look “faster” and cleaner.

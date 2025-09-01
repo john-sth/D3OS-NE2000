@@ -160,7 +160,7 @@ pub fn init() {
             extern "sysv64" fn poll() {
                 loop {
                     poll_sockets_ne2k();
-                    //scheduler().sleep(50);
+                    //scheduler().sleep(1);
                 }
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
@@ -347,7 +347,7 @@ pub fn open_udp() -> SocketHandle {
     let sockets = SOCKETS.get().expect("Socket set not initialized!");
     // =============================================================================
     // changed transmit and receive buffer size to tx_size and rx_size
-    // IMPORTANT//////
+    // IMPORTANT//
     // Metadata storage limits the maximum number of packets in the buffer
     // Limits how many packets can be queued, regardless of size
     // and payload storage limits the maximum total size of packets.
@@ -356,12 +356,14 @@ pub fn open_udp() -> SocketHandle {
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
-    let rx_size = 5000;
-    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
+    let rx_size = 10;
+    //let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
+    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 65535]);
 
-    let tx_size = 5000;
+    let tx_size = 10;
     // todo check with debugger, when doing receive benchmark memory allocation error with great values
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
+    //let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65535]);
 
     let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS

@@ -144,8 +144,6 @@ pub fn udp_send_traffic(n: usize, interval: u16, packet_length: u16) -> Result<(
     return Ok(());
 }
 
-//use crate::{close_socket, get_ip_addresses, open_udp, receive_datagram, send_datagram};
-
 /// Sends "Init\n" to server, waits for an "Init\n" response, then returns.
 pub fn run_udp_client(server: &str, port: u16) -> Result<(), &'static str> {
     // 1) Resolve server address

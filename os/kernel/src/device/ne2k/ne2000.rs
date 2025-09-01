@@ -3,11 +3,6 @@
 // AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 // DESCRIPTION : Main file for the NE2000 driver
 // =============================================================================
-// NOTES:
-// TODO : check trigger method in ne2000.cpp
-// rewrite overwrite and receive method, replace self with reg mentioned above
-// do the same for the cpp implementation
-// =============================================================================
 // DEPENDENCIES:
 // =============================================================================
 use crate::interrupt::interrupt_dispatcher::InterruptVector;
@@ -15,7 +10,7 @@ use crate::memory::{PAGE_SIZE, vmm};
 use crate::{apic, interrupt_dispatcher, pci_bus, process_manager, scheduler};
 use core::mem;
 // for calling the methods outside the interrupt handler
-use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 // print to terminal
 use log::info;
 // for allocator impl
@@ -39,7 +34,7 @@ use alloc::vec::Vec;
 use smoltcp::wire::EthernetAddress;
 
 use x86_64::VirtAddr;
-use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
+use x86_64::instructions::port::Port;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::page::PageRange;
 use x86_64::structures::paging::{Page, PageTableFlags};
@@ -135,8 +130,6 @@ pub struct CheckInterrupts {
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
-// defined in
-// TODO: add reference
 pub struct Ne2000InterruptHandler {
     device: Arc<Ne2000>,
 }
@@ -545,7 +538,6 @@ impl Ne2000 {
             // end dummy read
             // =============================================================================
 
-            //info!("Load packet size and enable remote write");
             //==== STEP 2 ====//
             // Load RBCR with packet length
             let packet_length = packet.len() as u32;
@@ -598,7 +590,6 @@ impl Ne2000 {
             // remote dma write ends, when byte count in RBCR is 0
             while (self.registers.read_isr() & InterruptStatusRegister::ISR_RDC.bits()) == 0 {
                 scheduler().sleep(1);
-                info!("polling")
             }
 
             // Clear ISR RDC Interrupt Bit
@@ -619,8 +610,6 @@ impl Ne2000 {
             // during transmission the nic writes data into the fifo
             // transmit serializer reads the data from the fifo and transmits it
             self.registers.command_port.write((CR::STA | CR::TXP | CR::STOP_DMA | CR::PAGE_0).bits());
-
-            //info!("finished send_packet fn");
         }
     }
 
@@ -631,32 +620,32 @@ impl Ne2000 {
     // a remote read operation is executed, which transfers the payload of the
     // packet, which is stored on the local buffer of the nic to the host system
     //    hardware           NE2000 driver                RX queue               smoltcp
-    // ───────────┬─────────────────┬──────────────────────┬────────────────────────┬──────────
-    //            │                 │                      │                        │
-    //Ethernet    │                 │                      │                        │
-    //frame ----▶ │  (IRQ)          │                      │                        │
-    //            │                 │                      │                        │
-    //            │                 │   receive_packet(): reads │                   │
-    //            │                 │   packet & copies    │                        │
-    //            │                 │   into host buffer   │                        │
-    //            │                 └────────────┬─────────┘                        │
+    // ───────────┬─────────────────┬─────────────────────────┬─────────────────────┬──────────
+    //            │                 │                         │                     │
+    //Ethernet    │                 │                         │                     │
+    //frame ----▶ │  (IRQ)          │                         │                     │
+    //            │                 │                         │                     │
+    //            │                 │ receive_packet(): reads │                     │
+    //            │                 │   packet & copies       │                     │
+    //            │                 │   into host buffer      │                     │
+    //            │                 └────────────┬────────────┘                     │
     //            │                              │  enqueue(buffer B)               │
     //            │                              │───────────────────────────────▶  │
     //            │                              │                                  │
     //            │                              │                                  │
     //            │                              │               poll()/receive()   │
-    //            │                              │◀──────────────────────────────────│
+    //            │                              │◀─────────────────────────────────│
     //            │   Device::receive():         │                                  │
     //            │   try_dequeue()              │                                  │
     //            │────────────────────────────▶ │  Ok(buffer B)                    │
-    //            │                              │◀──────────────────────────────────│
+    //            │                              │◀─────────────────────────────────│
     //            │   wrap in Ne2000RxToken      │                                  │
     //            │   + fresh Ne2000TxToken      │                                  │
     //            │───────────────────────────────────────────────────────────────▶ │
     //            │   return Some((Rx,Tx))       │                                  │
     //            │                              │                                  │
     //            │                              │        process frame             │
-    //            │                              │◀──────────────────────────────────│
+    //            │                              │◀─────────────────────────────────│
     //            │                              │                                  │
     //            │   RxToken consume():         │                                  │
     //            │   return_buffer(buffer B)    │                                  │
@@ -723,10 +712,6 @@ impl Ne2000 {
                     },
                 };
 
-                //info!("packet header rcr : {}", packet_header.receive_status);
-                //info!("packet header length : {}", packet_header.length);
-                //info!("packet header next_packet: {}", packet_header.next_packet);
-
                 //==== Step 3 ===================================================================//
                 // check received packet
                 // rust doesn't treat integers as boolean in an if clause, so a comparison has to be made
@@ -739,10 +724,6 @@ impl Ne2000 {
                 // size continue to process the packet
                 // else just update the pointers, discard the packet
                 //===============================================================================//
-                //let rsr_reg = self.registers.page0.rsr_port.read();
-                //info!("{}", rsr_reg);
-                //let status =
-                //ReceiveStatusRegister::from_bits_retain(ReceiveStatusRegister::RSR_PRX.bits());
                 //check if PRX bit is set in the header status
                 //if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() == 1
                 //status.contains(ReceiveStatusRegister::RSR_PRX)
@@ -753,9 +734,6 @@ impl Ne2000 {
                 if packet_header.receive_status & ReceiveStatusRegister::RSR_PRX.bits() != 0
                     && packet_header.length as u32 <= MAXIMUM_ETHERNET_PACKET_SIZE as u32
                 {
-                    //let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
-                    //info!("Packet No. {}", old_thread_count);
-
                     // get an empty packet from the receive_buffers_empty queue for
                     // saving the data
                     // 0 is the Receiver
@@ -796,8 +774,6 @@ impl Ne2000 {
                         // slice indices must be of type usize
                         packet[i as usize] = self.registers.data_port.read();
                     }
-                    //let s: String = packet.iter().map(|&b| b as char).collect();
-                    //info!("{}", s);
 
                     // enqueue the packet in the receive_messages queue,
                     //this queue gets processed by receive in smoltcp
@@ -846,7 +822,6 @@ impl Ne2000 {
 
             //==== Step 6 ===================================================================//
             // clear the RDC Interrupt Bit in the ISR (Remote DMA Operation has been completed)
-            // TODO check if the bit gets set
             //===============================================================================//
             self.registers.isr_port.lock().write(InterruptStatusRegister::ISR_RDC.bits());
         }
@@ -907,7 +882,7 @@ impl Ne2000 {
      *       CPU                  NE2000 Driver                             NIC Hardware
      *   |                         |                                         |
      *   |   OVW Interrupt         |                                         |
-     *   |-----------------------> | handle_overflow()                        |
+     *   |-----------------------> | handle_overflow()                       |
      *   |                         |                                         |
      *   |                         |  Step 1: read CR.TXP                    |
      *   |                         |                                         |
@@ -936,7 +911,6 @@ impl Ne2000 {
      */
     // =============================================================================
     pub fn handle_overflow(&mut self) {
-        info!("overflow");
         unsafe {
             //==== Step 1 ===================================================================//
             // save the value of the TXP Bit in CR

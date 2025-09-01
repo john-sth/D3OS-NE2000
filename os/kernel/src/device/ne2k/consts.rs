@@ -1,12 +1,12 @@
 // =============================================================================
-// FILE        : register_flags.rs
+// FILE        : consts.rs
+// Module      : ne2k
 // AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
 // DESCRIPTION : defines the registers of the NE2000 and their corresponding bits,
 //               which control the Ne2000's functionalities
 //               use these Constants for setting the correct bits in a register
 //
 // NOTES:
-//
 //
 // =============================================================================
 // DEPENDENCIES:
@@ -18,15 +18,22 @@ use core::sync::atomic::AtomicUsize;
 // =============================================================================
 
 // =============================================================================
-// ==== CONSTANTS
+// CONSTANTS
 // =============================================================================
 
+// ==============================
 // vendor and device id
+// ==============================
 pub const VENDOR_ID: u16 = 0x10ec;
 pub const DEVICE_ID: u16 = 0x8029;
 
-// NIC uses two ring buffers for packet handling, which are made of 256 Byte Pages
+// ====================================================
+// buffer definitions
+// ====================================================
+// NIC uses two ring buffers for packet handling, which
+// are made of 256 Byte Pages
 // Reference: https://wiki.osdev.org/Ne2000#Ring_Buffer
+// ====================================================
 
 // one page in the ne2000 receive buffer is 256 byte
 pub const NE_PAGE_SIZE: usize = 256;
@@ -196,8 +203,7 @@ bitflags! {
         const REMOTE_WRITE = 0x10;
         const SEND_PACKET = 0x08 | 0x10;
         const STOP_DMA = 0x20;
-        // Stop nic and dma
-        const STOP = 0x01 | 0x20;
+        const STOP = 0x01 | 0x20; // Stop nic and dma
     }
 }
 
@@ -211,14 +217,14 @@ bitflags! {
 
 bitflags! {
     pub struct InterruptStatusRegister : u8 {
-        const ISR_PRX = 0x01; //packet received
-        const ISR_PTX = 0x02; //packet transmitted
-        const ISR_RXE = 0x04; //receive error
+        const ISR_PRX = 0x01; // packet received
+        const ISR_PTX = 0x02; // packet transmitted
+        const ISR_RXE = 0x04; // receive error
         const ISR_TXE = 0x08; // transmit error
         const ISR_OVW = 0x10; // overwrite warning
         const ISR_CNT = 0x20; // counter overflow
         const ISR_RDC = 0x40; // dma complete
-        const ISR_RST = 0x80;  // Reset Status
+        const ISR_RST = 0x80; // Reset Status
     }
 }
 
@@ -229,13 +235,13 @@ bitflags! {
 // =============================================================================
 bitflags! {
     pub struct InterruptMaskRegister : u8 {
-        const IMR_PRXE = 0x01;
-        const IMR_PTXE = 0x02;
-        const IMR_RXEE = 0x04;
-        const IMR_TXEE = 0x08;
-        const IMR_OVWE = 0x10;
-        const IMR_CNTE = 0x20;
-        const IMR_RDCE = 0x40;
+        const IMR_PRXE = 0x01; // enable packet received
+        const IMR_PTXE = 0x02; // enable packet transmit
+        const IMR_RXEE = 0x04; // enable receive error
+        const IMR_TXEE = 0x08; // enable transmit error
+        const IMR_OVWE = 0x10; // enable overwrite warning
+        const IMR_CNTE = 0x20; // enable counter overflow
+        const IMR_RDCE = 0x40; // enable dma completed
     }
 }
 
@@ -246,13 +252,15 @@ bitflags! {
 // =============================================================================
 bitflags! {
     pub struct DataConfigurationRegister : u8 {
-        const DCR_WTS = 0x01;
-        const DCR_BOS = 0x02;
-        const DCR_LAS = 0x04;
-        const DCR_LS  = 0x08;
-        const DCR_AR  = 0x10;
-        const DCR_FT0 = 0x20;
+        const DCR_WTS = 0x01; // byte- or word-wide dma transfer
+        const DCR_BOS = 0x02; // byte order
+        const DCR_LAS = 0x04; // dual 16-bit or single 32 bit dual dma
+        const DCR_LS  = 0x08; // select loopback mode
+        const DCR_AR  = 0x10; // auto-initialize remote
+        const DCR_FT0 = 0x20; // FIFO threshhold
         const DCR_FT1 = 0x40;
+        // Establishes point at which bus is
+        // requested when filling or emptying the FIFO
     }
 }
 

@@ -21,7 +21,6 @@ use crate::device::ne2k::consts::TOTAL_BUFFER_BYTES;
 use crate::memory::{PAGE_SIZE, vmm};
 use crate::process_manager;
 use core::{ptr, slice};
-use log::info;
 // for allocator impl
 use core::alloc::{AllocError, Allocator, Layout};
 // for allocator impl
@@ -118,6 +117,7 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
     // ==========================================
     // consume function()
     // ==========================================
+    // call send method using the NE2000
     // consumes the token to send a single network packet
     // constructs buffer (size len) -> calls passed closure f
     // in the closure a valid network packet should be constructed
@@ -127,10 +127,6 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
         F: FnOnce(&mut [u8]) -> R,
     {
         // Allocate and fill local buffer
-        // max. buffer size is 1514 (see documentation )
-        // TODO: add reference in manual for this
-
-        // call send method using the NE2000
         // allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
         // for defining where the packet gets written
@@ -330,7 +326,7 @@ impl phy::Device for Ne2000 {
         // None = no limit on the number of packets send
         // Note: changing this value does not increase the speed of the Ne2000
         // card (in qemu)
-        caps.max_burst_size = None;
+        caps.max_burst_size = Some(1);
         // medium = send the packet over Ethernet
         caps.medium = Medium::Ethernet;
 
