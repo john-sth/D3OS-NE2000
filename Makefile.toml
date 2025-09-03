@@ -19,6 +19,7 @@ alias = "qemu"
 
 [tasks.qemu]
 command = "qemu-system-x86_64"
+#command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh"
 dependencies = ["image", "hdd", "ovmf"]
 args = [
     # Base machine configuration
@@ -94,6 +95,7 @@ args = [
 
 [tasks.debug]
 command = "qemu-system-x86_64"
+#command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh"
 dependencies = ["debug-signal-vscode"]
 args = [
     # Base machine configuration
@@ -304,4 +306,5 @@ args = [
 [tasks.clean-members]
 run_task = { name = "clean", fork = true }
 command = "qemu-system-x86_64"
+#command = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/qemu-pci.sh"
 dependencies = ["image", "hdd", "ovmf"]

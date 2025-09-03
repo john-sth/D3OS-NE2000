@@ -92,7 +92,7 @@ def client(sock, addr, packet_length, interval):
 
     #print(f"nettest: client listening on {local_address}! Send 'exit' to leave.")
     print("Do Ctrl+c to exit the program !!")
-    print("UDP: sending Init to 127.0.0.1:1789")
+    print("UDP: sending Init to 127.0.0.1:1798")
 
     init_msg = b"Init\n"
     # send init msg to server 
@@ -231,14 +231,13 @@ def receive_traffic(sock, address_remote):
             seconds_passed +=1
     
     bytes_received = bytes_received + bytes_received_in_interval
-    average_bytes = (bytes_received / (interval_counter + 1)) / 100
+    average_bytes = (bytes_received / (interval_counter + 1)) / 1000
 
     print(f"{interval_counter} - {interval_counter + 1}: {bytes_received_in_interval/1000} KB/s")
     print(f"Received exit: End reception")
     print(f"------------------------------------------------------------------------")
     print(f"Number of packets received : {packets_received}")
-    print(f"Total bytes received       : {bytes_received_total}")
-    print(f"Bytes received             : {bytes_received / 1000} KB/s")
+    print(f"Bytes received             : {bytes_received / 1000} KB")
     print(f"Average Bytes received     : {average_bytes} KB/s")
     print(f"packets out of order       : {packets_out_of_order} / {packets_received}")
     print(f"duplicated packets         : {duplicated_packets}")
@@ -266,9 +265,40 @@ def server(sock, address, address_remote):
             sock.sendto(data, address_remote)
             return receive_traffic(sock, address_remote) 
 
+def tcp_server(conn, addr):
+    print(f"Connection from {addr}")
+    try:
+        while True:
+            data = conn.recv(1024)
+            if not data:
+                # No data means the connection was closed
+                break
+            print(f"Received: {data.decode(errors='ignore')}")
+            # Optionally, echo data back:
+            conn.sendall(data)
+    except Exception as e:
+        print(f"Error with {addr}: {e}")
+    finally:
+        conn.close()
+        print(f"Connection with {addr} closed.")
+
 
 
 def main():
+
+
+    # tcp
+    #server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #server.bind(("127.0.0.1", 2000))
+    #server.listen(1)
+    #print(f"Listening on 127.0.0.1:2000")
+
+    #while True:
+    #    conn, addr = server.accept()
+    #    print(conn)
+    #    print(addr)
+    #    return tcp_server(conn, addr)
+
 
     ap = argparse.ArgumentParser(description="UDP packet sender with 4-byte sequence header.")
     ap.add_argument("host", help="Server IP / hostname")
@@ -298,16 +328,20 @@ def main():
     # set the arguments for the application
     ip = args.host
     port = args.port 
+    print(ip)
+    print(port)
     ip_remote = args.host_remote
     port_remote = args.port_remote
 
     address = (ip, port)
+    print(address)
     address_remote = (ip_remote, port_remote)
 
     # set the default timer, for how long packets should be sent
     timing_interval = args.duration
 
     packet_length = args.packet_length
+    print(packet_length)
 
     # create socket handle
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -328,7 +362,7 @@ def main():
 #                 pps=args.pps,
 #                 duration=args.duration,
 #                 connect_mode=not args.no_connect)
-
+#
 #if __name__ == "__main__":
 #    main()
 #    # define packet length

@@ -160,7 +160,7 @@ pub fn init() {
             extern "sysv64" fn poll() {
                 loop {
                     poll_sockets_ne2k();
-                    //scheduler().sleep(1);
+                    scheduler().sleep(1);
                 }
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
@@ -356,14 +356,16 @@ pub fn open_udp() -> SocketHandle {
     // Problem:  enqueue faster than poll() can transmit,
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
-    let rx_size = 10;
+    //let rx_size = 3000;
+    let rx_size = 1000;
     //let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
-    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 65535]);
+    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; rx_size * 1000]);
 
-    let tx_size = 10;
+    //let tx_size = 3000;
+    let tx_size = 1000;
     // todo check with debugger, when doing receive benchmark memory allocation error with great values
     //let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 65535]);
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; tx_size * 1000]);
 
     let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS

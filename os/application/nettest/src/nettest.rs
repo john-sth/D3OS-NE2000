@@ -76,8 +76,9 @@ fn main() {
     let port = 2000;
     let dest_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 2, 2)), port);
 
-    //run_udp_server(socket_udp, dest_addr);
-    return run_udp_client(socket_udp, dest_addr, time_interval, payload_length);
+    return run_udp_server(socket_udp, dest_addr).expect("failed to start udp server");
+    //return run_udp_client(socket_udp, dest_addr, time_interval, payload_length);
+    //return tcp_send_traffic(dest_addr, payload_length, time_interval);
 
     let tcp_sock = TcpListener::bind(dest_addr)
         .expect("failed to open socket")
@@ -224,13 +225,39 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
 
         // send the packet
         //UdpSocket::send_to(&socket, &buf, dest_addr).expect("failed to send over UDP");
-        loop {
+        /*loop {
             match UdpSocket::send_to(&socket, &buf, dest_addr) {
                 Ok(_) => break,
                 Err(e) => {
                     //println!("Send busy, sleeping briefly...");
                     //scheduler().sleep(1);
                     //thread::sleep();
+                }
+            }
+        }*/
+        let mut backoff = TimeDelta::microseconds(50);
+        let max_backoff = TimeDelta::milliseconds(5);
+
+        loop {
+            match socket.send_to(&buf, dest_addr) {
+                Ok(n) => {
+                    if n != buf.len() {
+                        // Handle partial send if it ever happens
+                        // (for UDP this is uncommon; consider logging)
+                    }
+                    // reset backoff after a success
+                    backoff = TimeDelta::microseconds(50);
+                    break;
+                }
+                Err(NetworkError::DeviceBusy) => {
+                    thread::sleep(backoff.num_milliseconds() as usize);
+                    backoff = (backoff * 2).min(max_backoff);
+                    continue;
+                }
+                Err(e) => {
+                    // Real error, log and decide to drop/abort
+                    println!("send_to error:");
+                    break;
                 }
             }
         }
@@ -271,16 +298,10 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // an exit message to the server
     // to signal end of transmission
     // ======================================
+
+    send_end_msg(socket, dest_addr);
+
     let end_datagram: &[u8] = b"exit\n";
-    loop {
-        match UdpSocket::send_to(&socket, &end_datagram, dest_addr) {
-            Ok(_) => break,
-            Err(e) => {
-                println!("Send busy, sleeping briefly...");
-                //scheduler().sleep(1);
-            }
-        }
-    }
     //UdpSocket::send_to(&socket, &end_datagram, dest_addr).expect("failed to send end message");
 
     // ======================================
@@ -303,6 +324,52 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     );
     println!("//====================================================//");
     //return Ok(());
+}
+
+pub fn send_end_msg(socket: UdpSocket, dest_addr: SocketAddr) {
+    let source_port = 1798;
+    let local_socket_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), source_port);
+    let sock = UdpSocket::bind(local_socket_addr).unwrap();
+    let end_datagram: &[u8] = b"exit\n";
+
+    let mut backoff = TimeDelta::microseconds(50);
+    let max_backoff = TimeDelta::milliseconds(5);
+    let buf = [0u8; 512];
+
+    loop {
+        match socket.send_to(&end_datagram, dest_addr) {
+            Ok(n) => {
+                if n != end_datagram.len() {
+                    println!("partial send")
+                    // Handle partial send if it ever happens
+                    // (for UDP this is uncommon; consider logging)
+                }
+                // reset backoff after a success
+                backoff = TimeDelta::microseconds(50);
+                break;
+            }
+            Err(NetworkError::DeviceBusy) => {
+                thread::sleep(backoff.num_milliseconds() as usize);
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            }
+            Err(e) => {
+                // Real error, log and decide to drop/abort
+                println!("send_to error:");
+                break; // or return/continue based on your policy
+            }
+        }
+    }
+    //let u = UdpSocket::send_to(&sock, end_datagram, dest_addr).expect("failed to send end msg");
+    //loop {
+    //    match UdpSocket::send_to(&socket, &end_datagram, dest_addr) {
+    //        Ok(_) => break,
+    //        Err(e) => {
+    //            println!("Send busy, sleeping briefly...");
+    //            //scheduler().sleep(1);
+    //        }
+    //    }
+    //}
 }
 
 // =============================================================================
@@ -410,6 +477,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
         // rec_data is of type u8 which would overflow -> cast recv_data in previous and current to u32
         // get the received payload of the packet from the buffer
         let recv_data = &buf[..len];
+        println!("{:?}", recv_data);
 
         println!("UDP: received first packet from {:#?}:{:#?}", sender.ip(), sender.port());
 
@@ -418,7 +486,14 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
         // the number of the nth packet, which has been sent by the client
         // =============================================================================
         //if recv_data.len() >= 4 {
-        previous_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+        //previous_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+        //if let (Some(&b0), Some(&b1), Some(&b2), Some(&b3)) = (recv_data.get(0), recv_data.get(1), recv_data.get(2), recv_data.get(3)) {
+        //    previous_packet_number = u32::from_be_bytes([b0, b1, b2, b3]);
+        //} else {
+        //    println!("recv_data too short: length {}", recv_data.len());
+        //}
+        //println!("{} {} {} {}", recv_data[0], recv_data[1], recv_data[2], recv_data[3]);
+
         //} else {
         //    println!("Received packet too short: len = {}", recv_data.len());
         //    continue; // or handle error
@@ -442,61 +517,67 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     // until an exit msg is sent
     // =============================================================================
     loop {
-        let len = UdpSocket::recv_from(&sock, &mut buf).expect("Failed to parse Packet.").0;
-        let recv_data = &buf[..len];
-        // exit condition
-        if recv_data == exit_msg {
-            break;
-        }
+        match UdpSocket::recv_from(&sock, &mut buf) {
+            Ok(result) => {
+                let recv_data = &buf[..result.0];
+                // exit condition
+                if recv_data == exit_msg {
+                    break;
+                }
+                // count number of packets received
+                packets_received += 1;
+                //break;
+                // =============================================================================
+                // read the first 4 bytes of the packet payload which contain
+                // the number of the nth packet, which has been sent by the client
+                // =============================================================================
 
-        // count number of packets received
-        packets_received += 1;
+                // cast to u8 because of overflow error thrown by compiler
+                //if recv_data.len() >= 4 {
+                //current_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+                //}
+                //current_packet_number =
+                //(recv_data[0] >> 24 & 0xFF) as u32 + (recv_data[1] >> 16 & 0xFF) as u32 + (recv_data[2] >> 8 & 0xFF) as u32 + (recv_data[3] & 0xFF) as u32;
 
-        // =============================================================================
-        // read the first 4 bytes of the packet payload which contain
-        // the number of the nth packet, which has been sent by the client
-        // =============================================================================
+                // =============================================================================
+                // if the first 4 bytes of the previous and current packet
+                // are equal then the packet had been retransmitted
+                // =============================================================================
+                if current_packet_number == previous_packet_number {
+                    duplicated_packets += 1;
+                // =============================================================================
+                // check if the packet has been received out of order
+                // =============================================================================
+                } else if current_packet_number != (previous_packet_number + 1) || current_packet_number < previous_packet_number {
+                    packets_out_of_order += 1;
+                }
+                // update values, count the received bytes
+                previous_packet_number = current_packet_number;
+                //bytes_received_in_interval += len;
+                bytes_received_in_interval += result.0;
 
-        // cast to u8 because of overflow error thrown by compiler
-        //if recv_data.len() >= 4 {
-        current_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
-        //}
-        //current_packet_number =
-        //(recv_data[0] >> 24 & 0xFF) as u32 + (recv_data[1] >> 16 & 0xFF) as u32 + (recv_data[2] >> 8 & 0xFF) as u32 + (recv_data[3] & 0xFF) as u32;
+                // =============================================================================
+                // if a second has passed, print out the number of bytes which
+                // have been received in the current second
+                // =============================================================================
 
-        // =============================================================================
-        // if the first 4 bytes of the previous and current packet
-        // are equal then the packet had been retransmitted
-        // =============================================================================
-        if current_packet_number == previous_packet_number {
-            duplicated_packets += 1;
-        // =============================================================================
-        // check if the packet has been received out of order
-        // =============================================================================
-        } else if current_packet_number != (previous_packet_number + 1) || current_packet_number < previous_packet_number {
-            packets_out_of_order += 1;
-        }
-
-        // update values, count the received bytes
-        previous_packet_number = current_packet_number;
-        bytes_received_in_interval += len;
-
-        // =============================================================================
-        // if a second has passed, print out the number of bytes which
-        // have been received in the current second
-        // =============================================================================
-
-        if seconds_passed < time::systime().as_seconds_f64() {
-            println!(
-                "[{} - {}] : [{} KB/s]",
-                interval_counter,
-                interval_counter + 1,
-                bytes_received_in_interval / 1000
-            );
-            interval_counter += 1;
-            bytes_received += bytes_received_in_interval;
-            bytes_received_in_interval = 0;
-            seconds_passed += 1.0;
+                if seconds_passed < time::systime().as_seconds_f64() {
+                    println!(
+                        "[{} - {}] : [{} KB/s]",
+                        interval_counter,
+                        interval_counter + 1,
+                        bytes_received_in_interval / 1000
+                    );
+                    interval_counter += 1;
+                    bytes_received += bytes_received_in_interval;
+                    bytes_received_in_interval = 0;
+                    seconds_passed += 1.0;
+                }
+            }
+            Err(e) => {
+                //println!("Send busy, sleeping briefly...");
+                //scheduler().sleep(1);
+            }
         }
     }
     bytes_received += bytes_received_in_interval;
@@ -524,27 +605,35 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
 }
 
 //pub fn tcp_send_traffic(sock: TcpStream, addr: SocketAddr, packet_length: u16, time_interval: f64) -> Result<(), &'static str> {
-pub fn tcp_send_traffic(sock: TcpStream, addr: SocketAddr, packet_length: u16, time_interval: f64) {
+pub fn tcp_send_traffic(addr: SocketAddr, packet_length: u16, time_interval: TimeDelta) {
     let mut packets_send = 0;
     let mut interval_counter = 0;
     let mut bytes_sent_in_interval: u128 = 0;
     // create tcp socket
-    let tcp_sock = TcpListener::bind(addr)
-        .expect("failed to open socket")
-        .accept()
-        .expect("failed to accept connection");
+    let source_port = 1798;
+    let local_socket_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), source_port);
+    TcpListener::bind(local_socket_addr);
+    //let tcp_sock = TcpListener::bind(local_socket_addr)
+    //    .expect("failed to open socket")
+    //    .accept()
+    //    .expect("failed to accept connection");
+    //println!("worked");
 
     // connect the tcp socket to the server
-    TcpStream::connect(addr).expect("failed to open socket");
+    let tcp_sock = TcpStream::connect(addr).expect("failed to open socket");
 
     // ======================================
     // create the packet
     // ======================================
-    let mut buf = vec![0; packet_length as usize];
-    let datagram: &mut [u8] = &mut buf;
+    //let mut buf = vec![0; packet_length as usize];
+    let datagram = b"Hello\n";
+    tcp_sock.write(datagram).expect("failed to send message.");
+    let mut buf = [0u8; 1024];
+    let result = tcp_sock.read(&mut buf).unwrap();
+    print!("{}", result);
 
     // define the time for exit
-    let test_finish_time = time::systime().as_seconds_f64() + time_interval;
+    let test_finish_time = time::systime() + time_interval;
     // define counter variable seconds_passed for each passing second
     let mut seconds_passed = time::systime().as_seconds_f64() + 1.0;
     //jprintln!("//=============================================================//");
@@ -555,8 +644,7 @@ pub fn tcp_send_traffic(sock: TcpStream, addr: SocketAddr, packet_length: u16, t
     );
     //println!("//=============================================================//");
 
-    let mut buf = [0u8; 1024];
-    TcpStream::write(&tcp_sock, &datagram).expect("failed to send char");
+    /*
     // loop until the time interval has been reached
     while time::systime().as_seconds_f64() < test_finish_time {
         // count each packet being send
@@ -612,4 +700,5 @@ pub fn tcp_send_traffic(sock: TcpStream, addr: SocketAddr, packet_length: u16, t
     println!("    [total Bytes transmitted]        ==> {}", sent_bytes);
     println!("    [Average KB/s]                   ==> {} KB/s", (sent_bytes as f64 / time_interval) / 1000.0);
     println!("//====================================================//");
+    */
 }

@@ -16,6 +16,10 @@ pub const STACK_ENTRY_SIZE: usize = 8;
 
 //===============================================================================================
 // update 15.08.2025: increase heap page size (as suggested by M. Schoettner)
-// pub const INIT_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS (old value)
+// Note: Kernel heap pages are chunks of memory pages allocated to the kernel’s
+// dynamic heap, from which the OS allocates memory for its internal data
+// structures.
+// old value:
+// pub const KERNEL_HEAP_PAGES: usize = 0x400; // number of heap pages for booting the OS (old value)
 //===============================================================================================
 pub const KERNEL_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the OS

@@ -2,12 +2,12 @@
 
 ### Constants
 # this is the Linux kernel module that's used for the card
-LINUX_MODULE="/lib/modules/6.16.1-arch1-1/kernel/drivers/net/ethernet/8390/ne2k-pci.ko.zst"
-# this is the symlink in /sys/bus/pci/drivers/LINUX_MODULE/
+LINUX_MODULE="ne2k-pci"
 
-BUS_ID="0123:45:67.8"
+# this is the symlink in /sys/bus/pci/drivers/LINUX_MODULE/
+BUS_ID="0000:04:02.0"
 # this can be found with "lspci -nn | grep VENDOR"
-DEVICE_ID="1234 5678"
+DEVICE_ID="10ec 8029"
 # qemu might fail because an IRQ is allocated to a different device (dmesg, /proc/interrupts)
 # we could probably use INTx instead, but for now just disable them
 DEVICES_TO_REMOVE="pci0000:00/1234:56:78.9"
@@ -21,6 +21,10 @@ sudo modprobe vfio_pci
 echo $BUS_ID | sudo tee /sys/bus/pci/drivers/$LINUX_MODULE/unbind
 # bind the card to VFIO
 echo $DEVICE_ID | sudo tee /sys/bus/pci/drivers/vfio-pci/new_id
+echo "104c 8240" | sudo tee /sys/bus/pci/drivers/vfio-pci/new_id
+echo "0000:04:02.0" | sudo tee /sys/bus/pci/drivers/vfio-pci/bind
+echo "0000:03:00.0" | sudo tee /sys/bus/pci/drivers/vfio-pci/bind
+
 
 for device in $DEVICES_TO_REMOVE; do
     echo 1 | sudo tee /sys/devices/$device/remove
@@ -28,7 +32,7 @@ done
 
 # chown the device, so that qemu doesn't have to run as root
 # TODO: actually look at what device we need
-sudo chown $USER /dev/vfio/?
+sudo chown $USER /dev/vfio/vfio
 # allow the VM to pin its memory
 # we need a bit more than $MEMORY, but in bytes
 LIMIT=$(($(($MEMORY + 128)) * 1024 * 1024))

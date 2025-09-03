@@ -32,7 +32,7 @@ use core::ptr::NonNull;
 
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::vec::Vec;
-use smoltcp::phy;
+use smoltcp::phy::{self, ChecksumCapabilities};
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
@@ -326,7 +326,10 @@ impl phy::Device for Ne2000 {
         // None = no limit on the number of packets send
         // Note: changing this value does not increase the speed of the Ne2000
         // card (in qemu)
-        caps.max_burst_size = Some(1);
+        // Note by Johann Spenrath on 02.09.2025:
+        // changing this value changed nothing in transmission speed
+        // or the overall performance of the card in qemu
+        caps.max_burst_size = None;
         // medium = send the packet over Ethernet
         caps.medium = Medium::Ethernet;
 
