@@ -23,7 +23,6 @@ chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
 # Local dependencies
 terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
-naming = { path = "../../library/naming" }
 concurrent = { path = "../../library/concurrent" }
 
 time = { path = "../../library/time" }

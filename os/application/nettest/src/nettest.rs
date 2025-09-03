@@ -16,21 +16,17 @@
 #![no_std]
 extern crate alloc;
 
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
-use alloc::vec::Vec;
 use chrono::{self, Duration, TimeDelta};
-use concurrent::{process, thread};
+use concurrent::thread;
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use network::{NetworkError, get_ip_addresses};
+use network::NetworkError;
 #[allow(unused_imports)]
 use network::{TcpListener, TcpStream, UdpSocket, resolve_hostname};
 use runtime::*;
-use smoltcp::phy::ChecksumCapabilities;
 use smoltcp::wire::*;
-use smoltcp::wire::{IpEndpoint, UDP_HEADER_LEN};
-use terminal::write::print;
-use terminal::{print, println, read::read};
+use terminal::{print, println};
 use time;
 
 enum Protocol {
@@ -259,12 +255,13 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     let mut interval_counter: usize = 0;
     // save the number of packets send in the time period
     let mut packets_send: u128 = 0;
+    let mut seconds_passed = TimeDelta::zero();
 
     // ======================================
     // create the packet
     // ======================================
     //let mut buf = vec![0; packet_length as usize];
-    let mut buf = vec![0; 2048];
+    let mut buf = vec![0; packet_length as usize];
 
     let mut packet = UdpPacket::new_unchecked(&mut buf);
     packet.set_len(packet_length);
@@ -272,7 +269,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // define the time for exit
     let test_finish_time = time::systime() + time_interval;
     // define counter variable seconds_passed for each passing second
-    let mut seconds_passed = time::systime() + chrono::TimeDelta::seconds(1);
+    seconds_passed = time::systime() + chrono::TimeDelta::seconds(1);
     println!(
         "[  Start Time: {}  ] =========> [  End Time: {}  ]  ",
         time::systime().as_seconds_f32(),
@@ -405,16 +402,16 @@ pub fn send_end_msg(socket: UdpSocket, dest_addr: SocketAddr) {
     let source_port = 1798;
     let local_socket_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), source_port);
     let sock = UdpSocket::bind(local_socket_addr).unwrap();
-    let end_datagram: &[u8] = b"exit\n";
+    let end_msg = b"exit\n";
 
     let mut backoff = TimeDelta::microseconds(50);
     let max_backoff = TimeDelta::milliseconds(5);
     let buf = [0u8; 512];
 
     loop {
-        match socket.send_to(&end_datagram, dest_addr) {
+        match socket.send_to(end_msg, dest_addr) {
             Ok(n) => {
-                if n != end_datagram.len() {
+                if n != end_msg.len() {
                     println!("[partial send]")
                     // Handle partial send if it ever happens
                     // (for UDP this is uncommon; consider logging)
@@ -519,11 +516,13 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     let mut bytes_received: usize = 0;
     let mut bytes_received_in_interval: usize = 0;
     let mut bytes_received_total: usize = 0;
-    let mut seconds_passed = 0.0;
+    let mut seconds_passed = TimeDelta::zero();
     // define exit_msg
     let exit_msg = b"exit\n";
     // define a buffer in which the received packetgets saved to
     let mut buf = vec![0; 2048];
+
+    println!("[nettest: server listening! Send 'exit' to leave.]");
 
     //this lead to an error in which no packet was received now it works, when just passing the socket
     // from the calling method
@@ -553,7 +552,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
             // =============================================================================
             // initalize the counter variables
             // =============================================================================
-            seconds_passed = time::systime().as_seconds_f64() + 1.0;
+            seconds_passed = time::systime() + Duration::seconds(1);
             packets_received += 1;
             bytes_received_in_interval = result.0;
             // =============================================================================
@@ -616,7 +615,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
             // have been received in the current second
             // =============================================================================
 
-            if seconds_passed < time::systime().as_seconds_f64() {
+            if seconds_passed < time::systime() {
                 println!(
                     "[{} - {}] : [{} KB/s]",
                     interval_counter,
@@ -626,7 +625,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
                 interval_counter += 1;
                 bytes_received += bytes_received_in_interval;
                 bytes_received_in_interval = 0;
-                seconds_passed += 1.0;
+                seconds_passed += TimeDelta::seconds(1);
             }
         }
     }
