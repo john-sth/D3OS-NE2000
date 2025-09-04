@@ -383,6 +383,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     println!("==> [ reached finish time! ]");
     println!("");
     println!("[====================================================]");
+    println!("  [Packet payload length]          ==> {}", packet_length);
     println!("  [Number of transmitted packets]  ==> {}", packets_send);
     println!("  [total Bytes transmitted]        ==> {} Bytes", sent_bytes);
     println!("  [total Kbytes transmitted]       ==> {} Bytes", sent_bytes as f64 / 1000.0);
@@ -517,6 +518,9 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     let mut bytes_received_in_interval: usize = 0;
     let mut bytes_received_total: usize = 0;
     let mut seconds_passed = TimeDelta::zero();
+    // use this variable to print out the received payload length in the
+    // end results
+    let mut packet_payload_length = 0;
     // define exit_msg
     let exit_msg = b"exit\n";
     // define a buffer in which the received packetgets saved to
@@ -549,6 +553,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
             println!("[======================================================]");
             println!("  [  Start Time: {}  ]", time::systime().as_seconds_f64());
             println!("[======================================================]");
+            packet_payload_length = result.0;
             // =============================================================================
             // initalize the counter variables
             // =============================================================================
@@ -641,11 +646,12 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     println!("==> [Received exit message from Client: End of reception!]");
     println!("");
     println!("[======================================================]");
+    println!("  [Packet Payload length]      ==> {}", packet_payload_length);
     println!("  [Number of packets received] ==> {}", packets_received);
     println!("  [Total bytes received]       ==> {}", bytes_received_total);
-    println!("  [Kbytes received]             ==> {} KB/s", bytes_received / 1000);
+    println!("  [Kbytes received]            ==> {} KB/s", bytes_received / 1000);
     println!("  [Average bytes received]     ==> {} B/s", (bytes_received / (interval_counter + 1)));
-    println!("  [Average Kbytes received]     ==> {} KB/s", (bytes_received / (interval_counter + 1)) / 1000);
+    println!("  [Average Kbytes received]    ==> {} KB/s", (bytes_received / (interval_counter + 1)) / 1000);
     println!("  [packets out of order]       ==> {} / {}", packets_out_of_order, packets_received);
     println!("  [duplicated packets]         ==> {}", duplicated_packets);
     println!("[======================================================]");

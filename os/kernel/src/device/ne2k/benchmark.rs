@@ -29,7 +29,7 @@ pub fn benchmark(receive: bool) {
     let source_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 15));
     let source_port = 1798;
     let timing_interval = 20;
-    let packet_length: u16 = 1450;
+    let packet_length: u16 = 128;
 
     let dest_addr = (dest_ip, dest_port);
 
@@ -193,7 +193,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
         }
         // light pacing so the CPU doesn't get hoged
         //network::poll_ne2000_tx();
-        network::poll_sockets_ne2k();
+        //network::poll_sockets_ne2k();
         //scheduler().sleep(20);
     }
 
@@ -217,6 +217,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
     // ======================================
     let sent_bytes = packet_length as u32 * packet_number;
     info!("--------------------------------------------------------");
+    info!("Packet payload length: {}", packet_length);
     info!("Packets transmitted : {}", packet_number);
     info!("Bytes transmitted: {}", sent_bytes);
     info!("Average: {} KB/s", (sent_bytes as f32 / interval as f32) / 1000.0);
@@ -293,6 +294,9 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     let mut bytes_received_in_interval: usize = 0;
     let mut bytes_received_total: usize = 0;
     let mut seconds_passed = 0;
+    // use this variable to print out the packet length at the
+    // end in the results
+    let mut info_payload_length = 0;
     // define exit_msg
     let exit_msg = b"exit\n";
     // define a buffer in which the received packetgets saved to
@@ -324,6 +328,7 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
         if let Ok((size, meta)) = network::receive_datagram(sock, &mut buf) {
             // rec_data is of type u8 which would overflow -> cast recv_data in previous and current to u32
             let recv_data = &buf[..size];
+            info_payload_length = size;
             //info!("UDP: received first packet from {}: {:?}", meta.endpoint, recv_data);
             info!("UDP: received first packet from {}.", meta.endpoint);
             info!("Start: {}", timer().systime_ms());
@@ -341,7 +346,6 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
             break;
         }
         // use this for prohibiting the queue from filling up
-        network::poll_ne2000_rx();
     }
 
     // =============================================================================
@@ -411,6 +415,7 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     info!("{} - {}: {} KB/s", interval_counter, interval_counter + 1, bytes_received_in_interval / 1000);
     info!("Received exit: End reception");
     info!("--------------------------------------------------------------");
+    info!("Packet payload length {}", info_payload_length);
     info!("Number of packets received : {}", packets_received);
     info!("Total bytes received : {}", bytes_received_total);
     info!("Bytes received : {} KB/s", bytes_received / 1000);

@@ -325,12 +325,12 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // - call functions for logging statistics about
     //   sending and receiving packets
     //=================================================================
-    let enable = false;
+    let enable = true;
 
     if enable {
         extern "sysv64" fn benchmark() {
             //loop {
-            benchmark::benchmark(false);
+            benchmark::benchmark(true);
             //}
         }
         scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));

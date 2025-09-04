@@ -1,0 +1,8 @@
+0-1: 1000.448 KB/s
+1 - 2: 0.0 KB/s 
+Received exit: End reception
+------------------------------------------------------------------------Number of packets received : 977
+Bytes received             : 1000.448 KB
+Average Bytes received     : 500.224 KB/s
+packets out of order       : 1 / 977
+duplicated packets         : 0
