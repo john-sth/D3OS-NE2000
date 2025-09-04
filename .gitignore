@@ -139,4 +139,4 @@ towbootctl
 ## for the NE2000 card (Johann Spenrath, Last Modified: 06.06.2025)
 ne2k.dump
 ## added by Johann Spenrath on 4.09.2025
-results/
+#results/

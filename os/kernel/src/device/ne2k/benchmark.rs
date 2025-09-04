@@ -10,7 +10,6 @@
 use crate::scheduler;
 use crate::{network, timer};
 use alloc::vec;
-use core::net::SocketAddr;
 use log::{error, info, warn};
 use smoltcp::iface::SocketHandle;
 use smoltcp::socket::udp::RecvError;
@@ -30,15 +29,13 @@ pub fn benchmark(receive: bool) {
     let source_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 15));
     let source_port = 1798;
     let timing_interval = 20;
-    let packet_length: u16 = 512;
+    let packet_length: u16 = 1450;
 
-    let src_addr = (source_ip, source_port);
     let dest_addr = (dest_ip, dest_port);
 
     let sock = network::open_udp();
     network::bind_udp(sock, source_ip, source_port);
 
-    let sock_recv = network::open_udp();
     network::bind_udp(sock, source_ip, source_port);
 
     if receive {
@@ -126,11 +123,12 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
     let mut packet_number: u32 = 0;
     let mut buf = vec![0; packet_length as usize];
     let datagram: &mut [u8] = &mut buf;
+    let mut seconds_passed = 0;
 
     // define the time for exit
     let test_finish_time = timer().systime_ms() + 20_000;
     // define counter variable seconds_passed for each passing second
-    let mut seconds_passed = timer().systime_ms() + 1_000;
+    seconds_passed = timer().systime_ms() + 1_000;
     info!("Start: {} - End: {}", timer().systime_ms(), test_finish_time);
     info!("--------------------------------------------------------");
 

@@ -22,7 +22,6 @@ use crate::memory::{PAGE_SIZE, dram, nvmem};
 //=================================================================
 // add ne2000 function for retrieving a shared reference of the nic
 //=================================================================
-use crate::network::ne2000;
 use crate::process::thread::Thread;
 use crate::syscall::{sys_vmem, syscall_dispatcher};
 use crate::{
@@ -326,13 +325,16 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // - call functions for logging statistics about
     //   sending and receiving packets
     //=================================================================
+    let enable = false;
 
-    //extern "sysv64" fn benchmark() {
-    //    //loop {
-    //    benchmark::benchmark(false);
-    //    //}
-    //}
-    //scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));
+    if enable {
+        extern "sysv64" fn benchmark() {
+            //loop {
+            benchmark::benchmark(false);
+            //}
+        }
+        scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));
+    }
 
     // Initialize non-volatile memory (creates identity mappings for any non-volatile memory regions)
     nvmem::init();
