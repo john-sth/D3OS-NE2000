@@ -259,16 +259,16 @@ def send_traffic(sock, addr, packet_length, duration):
             # set to next second passed
             seconds_passed +=1
         
-#        #time.sleep(0.5)
-#        if interval is not None:
-#            next_send_time += interval
-#            #sleep_for = next_send_time - time.time()
-#            sleep_for = 0.007
-#            if sleep_for > 0:
-#                time.sleep(sleep_for)
-#            else:
-#                # if we're behind schedule, snap to now to avoid drift explosion
-#                next_send_time = time.time()
+        #time.sleep(0.5)
+        if interval is not None:
+            next_send_time += interval
+            #sleep_for = next_send_time - time.time()
+            sleep_for = 0.007
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            else:
+                # if we're behind schedule, snap to now to avoid drift explosion
+                next_send_time = time.time()
 
     end_msg = b"exit\n"
     sock.sendto(end_msg, addr)

@@ -325,7 +325,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // - call functions for logging statistics about
     //   sending and receiving packets
     //=================================================================
-    let enable = true;
+    let enable = false;
 
     if enable {
         extern "sysv64" fn benchmark() {

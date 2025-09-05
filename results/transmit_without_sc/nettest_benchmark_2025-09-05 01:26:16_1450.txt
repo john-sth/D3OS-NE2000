@@ -1,0 +1,27 @@
+0-1: 1000.5 KB/s
+1-2: 1998.1 KB/s
+2-3: 1.45 KB/s
+3-4: 1.45 KB/s
+4-5: 1.45 KB/s
+5-6: 999.05 KB/s
+6-7: 999.05 KB/s
+7-8: 1.45 KB/s
+8-9: 997.6 KB/s
+9-10: 1998.1 KB/s
+10-11: 1.45 KB/s
+11-12: 1.45 KB/s
+12-13: 1.45 KB/s
+13-14: 92.8 KB/s
+14-15: 1.45 KB/s
+15-16: 390.05 KB/s
+16-17: 1.45 KB/s
+17-18: 997.6 KB/s
+18-19: 13.05 KB/s
+19-20: 1998.1 KB/s
+20 - 21: 0.0 KB/s 
+Received exit: End reception
+------------------------------------------------------------------------Number of packets received : 7929
+Bytes received             : 11497.05 KB
+Average Bytes received     : 547.4785714285715 KB/s
+packets out of order       : 0 / 7929
+duplicated packets         : 0

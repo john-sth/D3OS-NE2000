@@ -256,6 +256,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // save the number of packets send in the time period
     let mut packets_send: u128 = 0;
     let mut seconds_passed = TimeDelta::zero();
+    let end_msg = b"exit\n";
 
     // ======================================
     // create the packet
@@ -366,10 +367,32 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // to signal end of transmission
     // ======================================
 
-    send_end_msg(socket, dest_addr);
-
-    let end_datagram: &[u8] = b"exit\n";
-    //UdpSocket::send_to(&socket, &end_datagram, dest_addr).expect("failed to send end message");
+    let mut backoff = TimeDelta::microseconds(50);
+    let max_backoff = TimeDelta::milliseconds(5);
+    loop {
+        match socket.send_to(end_msg, dest_addr) {
+            Ok(n) => {
+                if n != end_msg.len() {
+                    println!("[partial send]")
+                    // Handle partial send if it ever happens
+                    // (for UDP this is uncommon; consider logging)
+                }
+                // reset backoff after a success
+                backoff = TimeDelta::microseconds(50);
+                break;
+            }
+            Err(NetworkError::DeviceBusy) => {
+                thread::sleep(backoff.num_milliseconds() as usize);
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            }
+            Err(_e) => {
+                // Real error, log and decide to drop/abort
+                println!("[send_to error]");
+                break; // or return/continue based on your policy
+            }
+        }
+    }
 
     // ======================================
     // get the total number of bytes send in
@@ -397,42 +420,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     );
     println!("[====================================================]");
     return Ok(());
-}
 
-pub fn send_end_msg(socket: UdpSocket, dest_addr: SocketAddr) {
-    let source_port = 1798;
-    let local_socket_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), source_port);
-    let sock = UdpSocket::bind(local_socket_addr).unwrap();
-    let end_msg = b"exit\n";
-
-    let mut backoff = TimeDelta::microseconds(50);
-    let max_backoff = TimeDelta::milliseconds(5);
-    let buf = [0u8; 512];
-
-    loop {
-        match socket.send_to(end_msg, dest_addr) {
-            Ok(n) => {
-                if n != end_msg.len() {
-                    println!("[partial send]")
-                    // Handle partial send if it ever happens
-                    // (for UDP this is uncommon; consider logging)
-                }
-                // reset backoff after a success
-                backoff = TimeDelta::microseconds(50);
-                break;
-            }
-            Err(NetworkError::DeviceBusy) => {
-                thread::sleep(backoff.num_milliseconds() as usize);
-                backoff = (backoff * 2).min(max_backoff);
-                continue;
-            }
-            Err(_e) => {
-                // Real error, log and decide to drop/abort
-                println!("[send_to error]");
-                break; // or return/continue based on your policy
-            }
-        }
-    }
     //let u = UdpSocket::send_to(&sock, end_datagram, dest_addr).expect("failed to send end msg");
     //loop {
     //    match UdpSocket::send_to(&socket, &end_datagram, dest_addr) {
@@ -553,6 +541,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
             println!("[======================================================]");
             println!("  [  Start Time: {}  ]", time::systime().as_seconds_f64());
             println!("[======================================================]");
+            println!("");
             packet_payload_length = result.0;
             // =============================================================================
             // initalize the counter variables
@@ -625,7 +614,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
                     "[{} - {}] : [{} KB/s]",
                     interval_counter,
                     interval_counter + 1,
-                    bytes_received_in_interval / 1000
+                    bytes_received_in_interval as f64 / 1000.0
                 );
                 interval_counter += 1;
                 bytes_received += bytes_received_in_interval;
@@ -648,10 +637,13 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     println!("[======================================================]");
     println!("  [Packet Payload length]      ==> {}", packet_payload_length);
     println!("  [Number of packets received] ==> {}", packets_received);
-    println!("  [Total bytes received]       ==> {}", bytes_received_total);
+    println!("  [Total bytes received]       ==> {} B", bytes_received);
     println!("  [Kbytes received]            ==> {} KB/s", bytes_received / 1000);
-    println!("  [Average bytes received]     ==> {} B/s", (bytes_received / (interval_counter + 1)));
-    println!("  [Average Kbytes received]    ==> {} KB/s", (bytes_received / (interval_counter + 1)) / 1000);
+    println!("  [Average bytes received]     ==> {} B/s", (bytes_received / (interval_counter + 1)) as f64);
+    println!(
+        "  [Average Kbytes received]    ==> {} KB/s",
+        (bytes_received / (interval_counter + 1)) as f64 / 1000.0
+    );
     println!("  [packets out of order]       ==> {} / {}", packets_out_of_order, packets_received);
     println!("  [duplicated packets]         ==> {}", duplicated_packets);
     println!("[======================================================]");
