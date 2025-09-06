@@ -1,0 +1,22 @@
+0-1: 24.64 KB/s
+1-2: 19.2 KB/s
+2-3: 19.2 KB/s
+3-4: 19.2 KB/s
+4-5: 19.2 KB/s
+5-6: 19.2 KB/s
+6-7: 19.2 KB/s
+7-8: 19.2 KB/s
+8-9: 19.2 KB/s
+9-10: 19.2 KB/s
+10-11: 19.2 KB/s
+11-12: 19.2 KB/s
+12-13: 19.2 KB/s
+13-14: 19.2 KB/s
+14-15: 19.2 KB/s
+15-16: 19.2 KB/s
+16-17: 19.2 KB/s
+17-18: 19.2 KB/s
+18-19: 19.2 KB/s
+Packets transmitted : 6000
+Total bytes tranmitted: 384000
+Average Bytes  : 115200.0 KB/s

@@ -222,7 +222,10 @@ def send_traffic(sock, addr, packet_length, duration):
     packet_length = max(packet_length, 4)
     packet = bytearray(packet_length)
     print(f"Packet length: {len(packet)}")  # should be 64
-    pps = 90
+    # limit how many packets per second should be sent 
+    # because of slirp errors in qemu the OS isn't can't process 
+    # a big amount of packets coming in a short amount of time
+    pps = 100
 
     interval = 1.0 / pps
 
@@ -260,14 +263,23 @@ def send_traffic(sock, addr, packet_length, duration):
             seconds_passed +=1
         
         #time.sleep(0.5)
+        # =================================
+        # handle drifts
+        # =================================
         if interval is not None:
+            # Schedule the next event by adding the interval to the last scheduled send time.
             next_send_time += interval
-            #sleep_for = next_send_time - time.time()
-            sleep_for = 0.007
+            # Compute how long to wait until the scheduled next_send_time.
+            # If the current clock (time.time()) is behind the schedule, sleep_for could be negative.
+            sleep_for = next_send_time - time.time()
+            #sleep_for = 0.007
+            # If early, wait until the right time.
+            # Keeps the sending rate consistent.
             if sleep_for > 0:
                 time.sleep(sleep_for)
             else:
-                # if we're behind schedule, snap to now to avoid drift explosion
+                # if behind schedule, snap to now to avoid drift explosion
+                # Reset the schedule anchor to "now" to prevent drift from accumulating 
                 next_send_time = time.time()
 
     end_msg = b"exit\n"

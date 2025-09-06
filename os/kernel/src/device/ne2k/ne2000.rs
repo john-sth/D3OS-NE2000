@@ -127,6 +127,7 @@ struct PacketHeader {
 pub struct CheckInterrupts {
     pub(crate) ovw: AtomicBool,
     pub(crate) prx: AtomicBool,
+    pub(crate) ptx: AtomicBool,
 }
 
 // the interrupt handler holds a shared reference to the Ne2000 device
@@ -313,6 +314,7 @@ impl Ne2000 {
         let check_interrupts = CheckInterrupts {
             ovw: AtomicBool::new(false),
             prx: AtomicBool::new(false),
+            ptx: AtomicBool::new(false),
         };
 
         // construct the ne2000 and return it at the end of the
@@ -1065,6 +1067,9 @@ impl InterruptHandler for Ne2000InterruptHandler {
         if status.contains(InterruptStatusRegister::ISR_PTX) {
             // reset ptx bit in isr
             unsafe {
+                // set prx to true, this triggers the check() function in network/mod.rs
+                // which calls the receive_packets function and resets the value at the end
+                self.device.check_interrupts.ptx.store(true, Ordering::Relaxed);
                 // acknowledge the interrupt
                 self.device.registers.isr_port.lock().write(InterruptStatusRegister::ISR_PTX.bits());
             }

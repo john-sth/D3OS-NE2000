@@ -255,6 +255,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     let mut interval_counter: usize = 0;
     // save the number of packets send in the time period
     let mut packets_send: u128 = 0;
+    let mut send_actual: u128 = 0;
     let mut seconds_passed = TimeDelta::zero();
     let end_msg = b"exit\n";
 
@@ -296,17 +297,27 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
         // send the packet
         // ======================================
         //UdpSocket::send_to(&socket, &buf, dest_addr).expect("failed to send over UDP");
-        /*loop {
-            match UdpSocket::send_to(&socket, &buf, dest_addr) {
-                Ok(_) => break,
-                Err(e) => {
-                    //println!("Send busy, sleeping briefly...");
-                    //scheduler().sleep(1);
-                    //thread::sleep();
-                }
+        //loop {
+        match UdpSocket::send_to(&socket, &buf, dest_addr) {
+            Ok(_) => {
+                //break,
+                send_actual += 1;
+
+                // ======================================
+                // count bytes send in each second
+                // by adding the packet length
+                // of each sent packet
+                // ======================================
+                bytes_sent_in_interval += packet_length as u128;
             }
-        }*/
-        let mut backoff = TimeDelta::microseconds(50);
+            Err(_e) => {
+                //println!("Send busy, sleeping briefly...");
+                //scheduler().sleep(1);
+                //thread::sleep();
+            }
+        }
+        //}
+        /*let mut backoff = TimeDelta::microseconds(50);
         let max_backoff = TimeDelta::milliseconds(5);
 
         loop {
@@ -331,14 +342,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
                     break;
                 }
             }
-        }
-
-        // ======================================
-        // count bytes send in each second
-        // by adding the packet length
-        // of each sent packet
-        // ======================================
-        bytes_sent_in_interval += packet_length as u128;
+        }*/
 
         // ======================================
         // if a second passes print out the
@@ -398,7 +402,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     // get the total number of bytes send in
     // the defined time interval
     // ======================================
-    let sent_bytes = packet_length as u128 * packets_send;
+    let sent_bytes = packet_length as u128 * send_actual;
     // ======================================
     // print the end result to
     // the terminal screen
@@ -407,7 +411,7 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
     println!("");
     println!("[====================================================]");
     println!("  [Packet payload length]          ==> {}", packet_length);
-    println!("  [Number of transmitted packets]  ==> {}", packets_send);
+    println!("  [Number of transmitted packets]  ==> {}", send_actual);
     println!("  [total Bytes transmitted]        ==> {} Bytes", sent_bytes);
     println!("  [total Kbytes transmitted]       ==> {} Bytes", sent_bytes as f64 / 1000.0);
     println!(
@@ -629,7 +633,7 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
         "[{} - {}] : [{} KB/s]",
         interval_counter,
         interval_counter + 1,
-        bytes_received_in_interval / 1000
+        bytes_received_in_interval as f64 / 1000.0
     );
     println!("");
     println!("==> [Received exit message from Client: End of reception!]");
@@ -637,8 +641,8 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     println!("[======================================================]");
     println!("  [Packet Payload length]      ==> {}", packet_payload_length);
     println!("  [Number of packets received] ==> {}", packets_received);
-    println!("  [Total bytes received]       ==> {} B", bytes_received);
-    println!("  [Kbytes received]            ==> {} KB/s", bytes_received / 1000);
+    println!("  [Total bytes received]       ==> {} B", bytes_received as f64);
+    println!("  [Kbytes received]            ==> {} KB/s", bytes_received as f64 / 1000.0);
     println!("  [Average bytes received]     ==> {} B/s", (bytes_received / (interval_counter + 1)) as f64);
     println!(
         "  [Average Kbytes received]    ==> {} KB/s",

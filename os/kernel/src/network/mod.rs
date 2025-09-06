@@ -14,7 +14,7 @@ use core::ops::Deref;
 use core::ptr;
 use core::sync::atomic::Ordering;
 use log::{info, warn};
-use smoltcp::iface::{self, Interface, SocketHandle, SocketSet};
+use smoltcp::iface::{self, Interface, PollResult, SocketHandle, SocketSet};
 use smoltcp::socket::dns::GetQueryResultError;
 use smoltcp::socket::{dhcpv4, dns, icmp, tcp, udp};
 use smoltcp::time::Instant;
@@ -34,6 +34,7 @@ static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::new(BTreeMap::new());
 static DNS_SOCKET: Once<SocketHandle> = Once::new();
 static DHCP_SOCKET: Once<SocketHandle> = Once::new();
+const MAX_INGRESS_PER_TICK: usize = 8;
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -67,7 +68,7 @@ pub fn init() {
             extern "sysv64" fn poll() {
                 loop {
                     poll_sockets();
-                    scheduler().sleep(50);
+                    //scheduler().sleep(50);
                 }
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "RTL8139"));
@@ -161,6 +162,7 @@ pub fn init() {
                 loop {
                     poll_sockets_ne2k();
                     scheduler().sleep(1);
+                    //scheduler().switch_thread_no_interrupt();
                 }
             }
             scheduler().ready(Thread::new_kernel_thread(poll, "NE2000"));
@@ -261,15 +263,19 @@ pub fn check_interrupts() {
     // check if interrupt occured
     // Packet received ?
     if device.check_interrupts.prx.load(Ordering::Relaxed) {
+        // reset the AtomicBool after handling the interrupt
         device.check_interrupts.prx.store(false, Ordering::Relaxed);
         device.receive_packet();
-        // reset the AtomicBool after handling the interrupt
     }
     // Receive Buffer Overwrite?
     if device.check_interrupts.ovw.load(Ordering::Relaxed) {
         // reset the AtomicBool after handling the interrupt
         device.check_interrupts.ovw.store(false, Ordering::Relaxed);
         device.handle_overflow();
+    }
+    // Packet send?
+    if device.check_interrupts.ptx.load(Ordering::Relaxed) {
+        device.check_interrupts.ptx.store(false, Ordering::Relaxed);
     }
 }
 
@@ -357,15 +363,15 @@ pub fn open_udp() -> SocketHandle {
     // hit whichever limit comes first and get BufferFull
     // =============================================================================
     //let rx_size = 3000;
-    let rx_size = 1000;
+    let rx_size = 3000;
     //let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; 100 * rx_size]);
-    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; rx_size * 1000]);
+    let rx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; rx_size], vec![0; rx_size * 10000]);
 
     //let tx_size = 3000;
-    let tx_size = 1000;
+    let tx_size = 3000;
     // todo check with debugger, when doing receive benchmark memory allocation error with great values
     //let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; 100 * tx_size]);
-    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; tx_size * 1000]);
+    let tx_buffer = udp::PacketBuffer::new(vec![udp::PacketMetadata::EMPTY; tx_size], vec![0; tx_size * 10000]);
 
     let handle = sockets.write().add(udp::Socket::new(rx_buffer, tx_buffer));
     SOCKET_PROCESS
@@ -693,11 +699,19 @@ pub fn poll_sockets_ne2k() -> Option<()> {
     // to work with a shared reference. We can safely cast the shared reference to a mutable.
     let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
 
+    // process both incoming and outgoing network packets using smoltcp
     let interface = interfaces.get_mut(0).expect("failed to get interface");
-    //interface.poll(time, device, &mut sockets);
-    interface.poll(time, device, &mut sockets);
+    let _res = interface.poll(time, device, &mut sockets);
+
+    // Johann Spenrath on 05.09.2025:
+    // if socket state changed, hand over CPU control to other threads
+    //if res == PollResult::SocketStateChanged {
+    //    scheduler().switch_thread_no_interrupt();
+    //}
 
     // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
+    // Johann Spenrath on 05.09.2025:
+    // check dhcp status (lease acquired or lost)
     let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
     let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
     if let Some(event) = dhcp_socket.poll() {

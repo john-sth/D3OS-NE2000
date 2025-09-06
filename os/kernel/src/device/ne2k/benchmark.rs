@@ -134,31 +134,35 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
 
     // loop until the time interval has been reached
     while timer().systime_ms() < test_finish_time {
-        // count each packet being send
-        packet_number += 1;
-        // ======================================
-        // save the current number in the
-        // current packet this is later being
-        // read by the server for verifying
-        // duplicated and out of order packets
-        // ======================================
-        datagram[0] = ((packet_number >> 24) & 0xff) as u8;
-        datagram[1] = ((packet_number >> 16) & 0xff) as u8;
-        datagram[2] = ((packet_number >> 8) & 0xff) as u8;
-        datagram[3] = (packet_number & 0xff) as u8;
-
         // ======================================
         // send the packet
         // ======================================
         // retry until queued; the poll thread
         // will drain TX between retries
         //loop {
-        // catch error buffer full by givin smoltcp::wire::IpAddress::Ipv4(g the )
-        // poll method more time
         // ======================================
         match network::send_datagram(sock, addr.0, addr.1, datagram) {
             Ok(()) => {
                 //break;
+                // count each packet being send
+                packet_number += 1;
+                // ======================================
+                // save the current number in the
+                // current packet this is later being
+                // read by the server for verifying
+                // duplicated and out of order packets
+                // ======================================
+                datagram[0] = ((packet_number >> 24) & 0xff) as u8;
+                datagram[1] = ((packet_number >> 16) & 0xff) as u8;
+                datagram[2] = ((packet_number >> 8) & 0xff) as u8;
+                datagram[3] = (packet_number & 0xff) as u8;
+
+                // ======================================
+                // count bytes send in each second
+                // by adding the packet length
+                // of each sent packet
+                // ======================================
+                bytes_sent_in_interval += packet_length;
             }
             Err(SendError::BufferFull) => {
                 info!("Buffer full");
@@ -167,13 +171,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
             }
             Err(e) => panic!("(UDP Send Test) send failed: {e:?}"),
         }
-
-        // ======================================
-        // count bytes send in each second
-        // by adding the packet length
-        // of each sent packet
-        // ======================================
-        bytes_sent_in_interval += packet_length;
+        //}
 
         // ======================================
         // if a second passes print out the
@@ -193,7 +191,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
         }
         // light pacing so the CPU doesn't get hoged
         //network::poll_ne2000_tx();
-        //network::poll_sockets_ne2k();
+        network::poll_sockets_ne2k();
         //scheduler().sleep(20);
     }
 

@@ -70,7 +70,7 @@ args = [
 
     # Network configuration
     #"-nic",
-    #"model=rtl8139,id=rtl8139,hostfwd=udp::1797-:1797",
+    #"model=rtl8139,id=rtl8139,hostfwd=udp::1798-:1798",
     #"-object",
     #"filter-dump,id=filter1,netdev=rtl8139,file=rtl8139.dump",
     # =============================================================================
