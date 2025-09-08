@@ -139,28 +139,29 @@ pub struct Ne2000InterruptHandler {
 pub struct Ne2000 {
     base_address: u16,
     pub registers: Registers,
-    // physical memory pages, that need transmitting
-    // in TxToken consume the outgoing packet gets loaded into the buffer
-    // multiple producers can add items to the
-    // queue concurrently, and a single consumer ( = receiver) processes them,
-    // with the guarantee that no thread will be blocked during enqueue or dequeue operations
-    // FIFO queue implementation
+    // - physical memory pages, that need transmitting
+    // - in TxToken consume the outgoing packet gets loaded into the buffer
+    // - multiple producers can add items to the
+    //   queue concurrently, and a single consumer ( = receiver) processes them,
+    //   with the guarantee that no thread will be blocked during enqueue or
+    //   dequeue operations
+    // - FIFO queue implementation
     pub send_queue: (
         // single receiver
         Mutex<mpsc::jiffy::Receiver<PhysFrameRange>>,
         // one of the senders
         mpsc::jiffy::Sender<PhysFrameRange>,
     ),
-    // pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
-    // recv_buffers_empty – pool of empty page-buffers that will be refilled after
-    // the stack finishes with a packet, avoiding fresh allocations under interrupt load.
+    // - pre-allocated, empty Vec<u8> buffers which get filled with incoming packets
+    // - recv_buffers_empty – pool of empty page-buffers that will be refilled after
+    // - the stack finishes with a packet, avoiding fresh allocations under interrupt load.
     pub receive_buffers_empty: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         // Sender send data to a set of Receivers
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
     ),
-    // contains the actual data which is received
-    // scq: Scalable-Circular-Queue implementation
+    // - contains the actual data which is received by the card
+    // - scq: Scalable-Circular-Queue implementation
     pub receive_messages: (
         mpmc::bounded::scq::Receiver<Vec<u8, PacketAllocator>>,
         mpmc::bounded::scq::Sender<Vec<u8, PacketAllocator>>,
@@ -173,6 +174,8 @@ pub struct Ne2000 {
 // ==== IMPLEMENTATIONS
 // =============================================================================
 
+// define ports for reading and writing to the registers, by adding the offset in
+// consts.rs to the base_address
 impl Page0 {
     pub fn new(base_address: u16) -> Self {
         Self {
@@ -223,11 +226,13 @@ impl Registers {
             // data port (or i/o port for reading received data)
             data_port: Port::new(base_address + DATA),
             data_port_u16: Port::new(base_address + DATA),
+            // add Page 0,1 Structs
             page0: Page0::new(base_address),
             page1: Page1::new(base_address),
         }
     }
 
+    // helper functions for reading isr and imr registers
     fn read_isr(&self) -> u8 {
         unsafe { self.isr_port.lock().read() }
     }
@@ -311,6 +316,7 @@ impl Ne2000 {
             recv_buffers.1.try_enqueue(buffer).expect("Failed to enqueue receive buffer!");
         }
 
+        // initialize values with false (= no interrupt)
         let check_interrupts = CheckInterrupts {
             ovw: AtomicBool::new(false),
             prx: AtomicBool::new(false),
@@ -459,10 +465,12 @@ impl Ne2000 {
             ne2000.registers.page1.current_port.write(CURRENT_NEXT_PAGE_POINTER.load(Ordering::Relaxed));
             //.write(0x47);
 
-            // 10) Start the NIC
+            //=== STEP 10 ===//
+            // Start the NIC
             ne2000.registers.command_port.write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
-            //11) Initialize TCR
+            //=== STEP 11 ===//
+            // Initialize TCR(Transmit Confituration Register) by writing a 0 to it
             ne2000.registers.page0.tcr_port.write(0);
 
             info!("\x1b[1;31mFinished Initialization");
@@ -481,6 +489,11 @@ impl Ne2000 {
     //   as param.
     // - the function sets the internal registers of the nic for writing the packet
     //   from the memory of the Host to the local buffer of the nic via Remote DMA
+    //
+    // =============================
+    // ===== FLOWCHART DIAGRAM =====
+    // =============================
+    //
     /*
      *    smoltcp               driver                          hardware
      *   |   poll_ne2k()       |                                |
@@ -491,7 +504,7 @@ impl Ne2000 {
      *   |                     |  ├─ alloc buf / DMA            |
      *   |                     |  ├─ copy frame                 |
      *   |                     |  ├─ call self.send_packet()    |
-     *   |                     |  └─-- set registers,           |
+     *   |                     |  └─── set registers,           |
      *   |                     |       enable remote write      |
      *   |                     |------------------------------> |  frame on the wire
      */
@@ -621,6 +634,11 @@ impl Ne2000 {
     // if a packet is received by the nic, process it
     // a remote read operation is executed, which transfers the payload of the
     // packet, which is stored on the local buffer of the nic to the host system
+    //
+    // =============================
+    // ===== FLOWCHART DIAGRAM =====
+    // =============================
+    //
     //    hardware           NE2000 driver                RX queue               smoltcp
     // ───────────┬─────────────────┬─────────────────────────┬─────────────────────┬──────────
     //            │                 │                         │                     │
@@ -880,36 +898,41 @@ impl Ne2000 {
     // gets called, if the buffer ring is full
     // this is analogous to the nic datasheet
     // Reference: p.9-10, https://web.archive.org/web/20010612150713/http://www.national.com/ds/DP/DP8390D.pdf
+    //
+    // =============================
+    // ===== FLOWCHART DIAGRAM =====
+    // =============================
+    //
     /*
-     *       CPU                  NE2000 Driver                             NIC Hardware
-     *   |                         |                                         |
-     *   |   OVW Interrupt         |                                         |
-     *   |-----------------------> | handle_overflow()                       |
-     *   |                         |                                         |
-     *   |                         |  Step 1: read CR.TXP                    |
-     *   |                         |                                         |
-     *   |                         |  Step 2: CR = STOP | PAGE_0             |
-     *   |                         |------------------------------>          | Stop DMA + NIC
-     *   |                         |                                         |
-     *   |                         |  Step 3: wait 1.6ms                     |
-     *   |                         |  Step 4: RBCR0 = 0, RBCR1 = 0           |
-     *   |                         |                                         |
-     *   |                         |  Step 5: check resend logic             |
-     *   |                         |   └─ if TXP == 1 and !PTX/TXE → resend  |
-     *   |                         |                                         |
-     *   |                         |  Step 6: set loopback mode              |
-     *   |                         |  Step 7: CR = START                     |
-     *   |                         |------------------------------>          | Resume in loopback
-     *   |                         |                                         |
-     *   |                         |  Step 8: call receive_packet()          |
-     *   |                         |  Step 9: clear ISR.OVW                  |
-     *   |                         |  Step 10: clear loopback (TCR = 0)      |
-     *   |                         |                                         |
-     *   |                         |  Step 11: if resend == 1:               |
-     *   |                         |   └─ CR = STA | TXP | STOP_DMA          |
-     *   |                         |------------------------------>          | Reissue transmit
-     *   |                         |                                         |
-     *   |                         |  return from ISR                        |
+     *   NE2000 Driver                             NIC Hardware
+     *    | <----------------------- OVW Interrupt  |
+     *    |                                         |
+     *    | handle_overflow()                       |
+     *    |                                         |
+     *    |  Step 1: read CR.TXP                    |
+     *    |                                         |
+     *    |  Step 2: CR = STOP | PAGE_0             |
+     *    |------------------------------>          | Stop DMA + NIC
+     *    |                                         |
+     *    |  Step 3: wait 1.6ms                     |
+     *    |  Step 4: RBCR0 = 0, RBCR1 = 0           |
+     *    |                                         |
+     *    |  Step 5: check resend logic             |
+     *    |   └─ if TXP == 1 and !PTX/TXE → resend  |
+     *    |                                         |
+     *    |  Step 6: set loopback mode              |
+     *    |  Step 7: CR = START                     |
+     *    |------------------------------>          | Resume in loopback
+     *    |                                         |
+     *    |  Step 8: call receive_packet()          |
+     *    |  Step 9: clear ISR.OVW                  |
+     *    |  Step 10: clear loopback (TCR = 0)      |
+     *    |                                         |
+     *    |  Step 11: if resend == 1:               |
+     *    |   └─ CR = STA | TXP | STOP_DMA          |
+     *    |------------------------------>          | Reissue transmit
+     *    |                                         |
+     *    |  return from ISR                        |
      */
     // =============================================================================
     pub fn handle_overflow(&mut self) {

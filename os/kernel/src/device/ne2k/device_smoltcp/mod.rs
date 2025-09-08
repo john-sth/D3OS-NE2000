@@ -1,18 +1,15 @@
 // =============================================================================
-// FILE        : network_stack/mod.rs
-// AUTHOR      : Johann Spenrath
-// DESCRIPTION : file includes the network stack for the NE2000 driver
+// FILE        : device_smoltcp/mod.rs
+// AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
+// DESCRIPTION : file includes the trait implementations for TxToken, RxToken
+//               and phy:Device for the NE2000 driver
 //               which is provided by the smoltcp crate
 //               and implementations for Packet allocation and deallocation
 // =============================================================================
 //
-// NOTES:
-// =============================================================================
 //& borrowing the Struct Ne2000
-
 // 'a lifetime annotation
 // implementation is orientated on the rtl8139.rs module
-
 // changed to mut because send packet expects mutable self reference
 //
 
@@ -32,7 +29,7 @@ use core::ptr::NonNull;
 
 // smoltcp provides a full network stack for creating packets, sending, receiving etc.
 use alloc::vec::Vec;
-use smoltcp::phy::{self, ChecksumCapabilities};
+use smoltcp::phy::{self};
 use smoltcp::phy::{DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
@@ -78,7 +75,7 @@ pub struct Ne2kRxToken<'a> {
 // Ne2000 uses buffer ring,
 // packets can be overwritten by new incoming
 // packets once the buffer is full
-// driver allocates memory in RAM to copy the
+// driver allocates memory to copy the
 // packet there and frees the buffer on NE2000
 // ==========================================
 
@@ -93,7 +90,7 @@ pub struct PacketAllocator;
 // TxToken impl
 // ==========================================
 // implementation is orientated on the
-// rtl8139.rs module generate new transmission
+// rtl8139.rs module, generate new transmission
 // token, a token to send a single network packet
 // see:
 // https://docs.rs/smoltcp/latest/smoltcp/phy/trait.TxToken.html
@@ -129,7 +126,7 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
         // Allocate and fill local buffer
         // allocate one pyhsical frame
         // the phys_buffers gets a start and end PhysFrame (Range)
-        // for defining where the packet gets written
+        // for defining where the packet content gets written
         let phys_buffer = unsafe { vmm::alloc_frames(1) };
         // map to kernel space
         let pages = PageRange {
@@ -139,24 +136,24 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
 
         // set kernel page tables to writable, no_caching for DMA,
         // ensure buffer is present in memory
-        //map it writable & uncached for DMA
+        // map it writable & uncached for DMA
         let kernel_process = process_manager().read().kernel_process().unwrap();
         kernel_process
             .virtual_address_space
             .set_flags(pages, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE);
 
         // Queue physical memory buffer for deallocation after transmission (.enqueue)
-        //.1 is the Sender here
+        // .1 is the Sender here
         // nic then sends the packet over the network
         self.device.send_queue.1.enqueue(phys_buffer).expect("Failed to enqueue physical buffer!");
 
         // Let smoltcp write the packet data to the buffer
         // slice : a view into a block of memory represented as a pointer and a length.
         // example:
-        //let mut x = [1, 2, 3];
-        //let x = &mut x[..]; // Take a full slice of `x`.
-        //x[1] = 7;
-        //assert_eq!(x, &[1, 7, 3]);
+        // let mut x = [1, 2, 3];
+        // let x = &mut x[..]; // Take a full slice of `x`.
+        // x[1] = 7;
+        // assert_eq!(x, &[1, 7, 3]);
         // from_raw_parts_mut : Forms a mutable slice from a pointer and a length.
 
         let buffer = unsafe { slice::from_raw_parts_mut(phys_buffer.start.start_address().as_u64() as *mut u8, len) };
@@ -169,6 +166,7 @@ impl<'a> phy::TxToken for Ne2kTxToken<'a> {
         // buffer memory of the nic and triggers a send operation
         self.device.send_packet(buffer);
 
+        // return the result from the closure, then the packet is send out
         result
     }
 }
@@ -241,7 +239,7 @@ impl<'a> phy::RxToken for Ne2kRxToken<'a> {
             .try_enqueue(self.buffer)
             .expect("Failed to enqueue used receive buffer!");
 
-        //return the result (the received data)
+        //return the result (the received data), smoltcp then processes the packet
         result
     }
 }
@@ -272,14 +270,14 @@ impl phy::Device for Ne2000 {
     // ==========================================
     // creates a new RxToken and calls it's consume() function
     //
-    // The additional transmit token makes it possible to generate a reply packet
+    // Info: The additional transmit token makes it possible to generate a reply packet
     // based on the contents of the received packet. For example, this makes it
     // possible to handle arbitrarily large ICMP echo (“ping”) requests,
     // where the all received bytes need to be sent back, without heap allocation.
     // =============================================================================
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let device = unsafe { ptr::from_ref(self).as_ref()? };
-        //dequeue an empty buffer from receive_messages, which gets assigned
+        // dequeue an empty buffer from receive_messages, which gets assigned
         // to the Ne2000RxToken for getting the packet payload
         // 0 is the receiver of the queue
         // if a packet is enqueued, it returns Ok(rec_buf)
@@ -313,7 +311,7 @@ impl phy::Device for Ne2000 {
     // device capabilities function
     // ==========================================
     //
-    // define what the device supports
+    // define what the device should support
     // ==========================================
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();

@@ -23,6 +23,7 @@ use core::sync::atomic::AtomicUsize;
 
 // ==============================
 // vendor and device id
+// https://theretroweb.com/chips/4692
 // ==============================
 pub const VENDOR_ID: u16 = 0x10ec;
 pub const DEVICE_ID: u16 = 0x8029;

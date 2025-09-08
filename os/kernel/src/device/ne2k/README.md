@@ -12,19 +12,19 @@
 
 - [x] nettest send benchmark create table
 - [x] nettest receive benchmark create table
+- [x] readme file how to integrate an emulated nic to d3os, add qemu network site
+- [x] add a list of modified and used files in the OS
 - [ ] nettest for rtl8139?
 - [ ] execute benchmark.rs
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
-- [ ] add a list of modified and used files in the OS
 - [ ] clean up code
-- [ ] create flowchart queues
 - [ ] reread code, check for commenting what the return value of a function is
+- [ ] create flowchart queues
 - [ ] fix latex code section error
 - [ ] latex add receive error img in pdf
 - [ ] maybe add tcp to nettest (at the end)
 - [ ] create the presentation
-- [ ] readme file how to integrate an emulated nic to d3os, add qemu network site
 - [ ] upload code and thesis until friday !!!!!
 
 - [x] rewrite of nettest application in rust
