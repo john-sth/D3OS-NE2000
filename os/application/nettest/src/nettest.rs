@@ -75,7 +75,11 @@ fn main() {
             Some("-h") | Some("--help") => {
                 println!(
                     "Usage:
-    nettest [-u] [-l] host port remote_host remote_port duration packet_length"
+    nettest [-u] [-l] HOST PORT [REMOTE_HOST] [REMOTE_PORT] [duration] [packet_length]\n
+    -u: Specify the protocol (UDP/TCP) \n
+    -l: Server mode, listen on HOST:PORT. \n
+    duration : for client mode, specify time for how long to send packets.\n
+    packet_length : for client mode, specify the preferred length of the packets, which should be transmitted."
                 );
                 return;
             }

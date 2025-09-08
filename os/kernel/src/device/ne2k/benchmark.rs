@@ -69,6 +69,7 @@ pub fn run_udp_client(sock: SocketHandle, addr: (IpAddress, u16), timing_interva
     let deadline = crate::timer().systime_ms() + 5000; // 5s timeout
     info!("Waiting for server reply...");
     // ======================================
+    // Step 3:
     // loop until a socket has been received
     // or the timeout is reached
     // ======================================
@@ -182,7 +183,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
                 "{} - {} : {} KB/s",
                 interval_counter,
                 interval_counter + 1,
-                (bytes_sent_in_interval as f32) / 1000.0
+                (bytes_sent_in_interval as f64) / 1000.0
             );
             // update counters after a passed second
             interval_counter += 1;
@@ -218,7 +219,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
     info!("Packet payload length: {}", packet_length);
     info!("Packets transmitted : {}", packet_number);
     info!("Bytes transmitted: {}", sent_bytes);
-    info!("Average: {} KB/s", (sent_bytes as f32 / interval as f32) / 1000.0);
+    info!("Average: {} KB/s", (sent_bytes as f64 / interval as f64) / 1000.0);
     return Ok(());
 }
 
@@ -401,7 +402,12 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
         // have been received in the current second
         // =============================================================================
         if seconds_passed < timer().systime_ms() {
-            info!("{} - {}: {} KB/s", interval_counter, interval_counter + 1, bytes_received_in_interval / 1000);
+            info!(
+                "{} - {}: {} KB/s",
+                interval_counter,
+                interval_counter + 1,
+                bytes_received_in_interval as f64 / 1000.0
+            );
             interval_counter += 1;
             bytes_received += bytes_received_in_interval;
             bytes_received_in_interval = 0;
@@ -416,8 +422,8 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     info!("Packet payload length {}", info_payload_length);
     info!("Number of packets received : {}", packets_received);
     info!("Total bytes received : {}", bytes_received_total);
-    info!("Bytes received : {} KB/s", bytes_received / 1000);
-    info!("Average Bytes received : {} KB/s", (bytes_received / (interval_counter + 1)) / 1000);
+    info!("Bytes received : {} KB/s", bytes_received as f64 / 1000.0);
+    info!("Average Bytes received : {} KB/s", (bytes_received / (interval_counter + 1)) as f64 / 1000.0);
     info!("packets out of order: {}", packets_out_of_order / packets_received);
     info!("duplicated packets: {}", duplicated_packets);
     info!("--------------------------------------------------------------");
