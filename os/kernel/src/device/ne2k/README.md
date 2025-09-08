@@ -10,14 +10,22 @@
 
 ### for the driver
 
+- [x] nettest send benchmark create table
+- [x] nettest receive benchmark create table
+- [ ] nettest for rtl8139?
+- [ ] execute benchmark.rs
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
 - [ ] add a list of modified and used files in the OS
-- [ ] create the presentation
-- [ ] nettest send benchmark create table
-- [ ] nettest receive benchmark create table
-- [ ] nettest for rtl8139?
 - [ ] clean up code
+- [ ] create flowchart queues
+- [ ] reread code, check for commenting what the return value of a function is
+- [ ] fix latex code section error
+- [ ] latex add receive error img in pdf
+- [ ] maybe add tcp to nettest (at the end)
+- [ ] create the presentation
+- [ ] readme file how to integrate an emulated nic to d3os, add qemu network site
+- [ ] upload code and thesis until friday !!!!!
 
 - [x] rewrite of nettest application in rust
 - [x] create flowchart for qemu network
@@ -49,29 +57,32 @@
   - if possible create video/gif recording
     from pyplot for the transmission rate
   - talk about results and further things which could be implemented
+  - prepare for questions after the presentation
 
 ## Files edited
 
 - ROOT DIR:
+
   - Cargo.toml: added nettest
-  - added nettest.py and netcat.sh for testing
+  - added nettest.py and netcat.sh, send_packet.sh for testing
   - configured qemu-pci.sh for rtl8029as
+  - dir results contains log output, .dump files and screenshots from the benchmark tests
+  - Makefile.toml : added emulated ne2k_pci
+
 - KERNEL:
 
-  - Device : added module ne2k, modified mod.rs
-  - network: modified mod.rs, added support for ne2000
-  - boot.rs : comments in the section network, old code
-    - threads for starting network benchmark tests
+  - os/kernel/src/device/ne2k added
+  - os/kernel/src/mod.rs : modified
+  - os/kernel/src/device : added module ne2k, modified mod.rs
+  - os/kernel/srcnetwork: modified mod.rs, added support for ne2000
+  - os/kernel/src/boot.rs : comments in the section network, old code
+    - contains codes for threads for starting network benchmark tests
   - consts.rs : increased the kernel heap page size
 
 - qemu-pci.sh : added device and vendor id
   - how to find kernel module : modinfo ne2k-pci
   - bus id: lspci -nnk | grep -A3 -i ne2k-pci
-- consts.rs : increase kernel_heap_size
-- boot.rs
-- network/mod.rs
-- os : Makefile.toml
-  Cargo.toml
+    Cargo.toml
 
 ## Reason for slirp errors:
 
