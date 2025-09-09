@@ -6,6 +6,7 @@ import socket
 import time
 from datetime import datetime, timedelta
 
+
 ## =============================================================================
 ## FILE        : server.py
 ## AUTHOR      : Johann Spenrath <johann.spenrath@hhu.de>
@@ -225,7 +226,7 @@ def send_traffic(sock, addr, packet_length, duration):
     # limit how many packets per second should be sent 
     # because of slirp errors in qemu the OS isn't can't process 
     # a big amount of packets coming in a short amount of time
-    pps = 100
+    pps = 300
 
     interval = 1.0 / pps
 
@@ -262,7 +263,7 @@ def send_traffic(sock, addr, packet_length, duration):
             # set to next second passed
             seconds_passed +=1
         
-        #time.sleep(0.5)
+        #time.sleep(0.007)
         # =================================
         # handle drifts
         # =================================
@@ -292,12 +293,12 @@ def send_traffic(sock, addr, packet_length, duration):
     print(f"------------------------------------------------------------------------")
     print(f"Packets transmitted : {packet_number}")
     print(f"Total bytes tranmitted: {send_bytes}")
-    print(f"Average Bytes  : {(send_bytes/interval)/1000.0} KB/s")
+    print(f"Average Bytes  : {(send_bytes/duration)/1000.0} KB/s")
     #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
     print(f"------------------------------------------------------------------------")
     f.write(f"Packets transmitted : {packet_number}\n")
     f.write(f"Total bytes tranmitted: {send_bytes}\n")
-    f.write(f"Average Bytes  : {(send_bytes/interval)/1000.0} KB/s\n")
+    f.write(f"Average Bytes  : {(send_bytes/duration)/1000.0} KB/s\n")
 
         
 
@@ -324,11 +325,104 @@ def client(sock, addr, packet_length, interval):
             return send_traffic(sock, addr, packet_length, interval)
 
 
+def tcp_client(packet_length, duration):
+
+    HOST = "127.0.0.1"  # server's hostname 
+    PORT = 1798  # port used by erver
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((HOST, PORT))
+    msg = b"Hello, world\n"
+
+
+
+
+    bytes_sent_in_interval = 0
+    interval_counter = 0
+    packet_number = 0
+
+    # make sure packet_length is > 4
+    packet_length = max(packet_length, 4)
+    packet = bytearray(packet_length)
+    print(f"Packet length: {len(packet)}")  # should be 64
+    # limit how many packets per second should be sent 
+    # because of slirp errors in qemu the OS isn't can't process 
+    # a big amount of packets coming in a short amount of time
+    pps = 100
+
+    interval = 1.0 / pps
+
+    #test_finish_time = int(time.time()) + interval 
+    seconds_passed = int(time.time()) + 1 
+    start_time = time.time()
+    next_send_time = start_time
+    print(f"Start: {start_time} - End: {duration}")
+    print(f"-------------------------------------------------------")
+
+    # log the results 
+    today = datetime.today()
+    current_date = datetime(today.year, today.month, today.day, today.hour, today.minute, today.second)
+    f = open(f"./results/nettest_benchmark_{current_date}.txt", "a")
+    while (time.time() - start_time) < duration:
+        packet_number = packet_number + 1
+
+        #packet[0] = (packet_number >> 24) & 0xFF
+        #packet[1] = (packet_number >> 16) & 0xFF
+        #packet[2] = (packet_number >> 8) & 0xFF
+        #packet[3] = (packet_number ) & 0xFF
+
+        sock.send(msg)
+
+        #print(f"Received {data!r}")
+        bytes_sent_in_interval = bytes_sent_in_interval + packet_length
+
+        if seconds_passed < int(time.time()):
+            string = f"{interval_counter}-{interval_counter + 1}: {bytes_sent_in_interval / 1000.0} KB/s"
+            print(string)
+            f.write(string + "\n")
+            interval_counter += 1
+            # reset bytes received 
+            bytes_sent_in_interval = 0
+            # set to next second passed
+            seconds_passed +=1
+        
+        time.sleep(0.007)
+
+    sock.shutdown(socket.SHUT_WR)
+
+    send_bytes = packet_length * packet_number
+
+    print(f"------------------------------------------------------------------------")
+    print(f"exit: End sending")
+    print(f"------------------------------------------------------------------------")
+    print(f"Packets transmitted : {packet_number}")
+    print(f"Total bytes tranmitted: {send_bytes}")
+    print(f"Average Bytes  : {(send_bytes/duration)/1000.0} KB/s")
+    #print(f"Packet #{packet_count} from {address}: {data.decode(errors='ignore')}")
+    print(f"------------------------------------------------------------------------")
+    f.write(f"Packets transmitted : {packet_number}\n")
+    f.write(f"Total bytes tranmitted: {send_bytes}\n")
+    f.write(f"Average Bytes  : {(send_bytes/duration)/1000.0} KB/s\n")
 
 
 
 def main():
 
+
+    #HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
+    #PORT = 2000  # Port to listen on (non-privileged ports are > 1023)
+
+    #with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    #    s.bind((HOST, PORT))
+    #    s.listen()
+    #    conn, addr = s.accept()
+    #    with conn:
+    #        print(f"Connected by {addr}")
+    #        while True:
+    #            data = conn.recv(1024)
+    #            if not data:
+    #                break
+    #            #conn.sendall(data)
+    #            print("i hope this works")
 
     # tcp
     #server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -351,6 +445,8 @@ def main():
     ap.add_argument("--mode", "-m", type=int, default=0,
                         help="specify mode, 0: Server, 1: Client" )
     group = ap.add_mutually_exclusive_group()
+    ap.add_argument("--type", "-t", default="udp",
+                        help="specify protocol to be used: TCP, UDP" )
     group.add_argument("--count", "-c", type=int, default=9_000,
                        help="Number of packets to send. Default: 9999")
     group.add_argument("--duration", "-d", type=int, default=20,
@@ -366,7 +462,7 @@ def main():
 
 
 
-    # set the arguments for the application
+    ## set the arguments for the application
     ip = args.host
     port = args.port 
     ip_remote = args.host_remote
@@ -388,9 +484,14 @@ def main():
     sock.bind(address)
 
     if args.mode == 1:
-        return client(sock, address_remote, packet_length, timing_interval )
+        if args.type == "udp":
+            return client(sock, address_remote, packet_length, timing_interval )
+        return tcp_client(packet_length, timing_interval)
 
-    return server(sock, address, address_remote)
+    if args.type == "udp":
+        return server(sock, address, address_remote)
+
+    
 
 if __name__ == "__main__":
     main()

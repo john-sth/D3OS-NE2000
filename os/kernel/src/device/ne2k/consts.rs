@@ -88,7 +88,7 @@ pub const DISPLAY_RED: &'static str = "\x1b[1;31m";
 //pub const RECV_QUEUE_CAP: usize = 256;
 // crash at 1024 with 0.007 delay
 //pub const RECV_QUEUE_CAP: usize = 512;
-pub const RECV_QUEUE_CAP: usize = 1500;
+pub const RECV_QUEUE_CAP: usize = 9000;
 
 // Buffer Start Page for the transmitted pages
 pub const TRANSMIT_START_PAGE: u8 = 0x40;

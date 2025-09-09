@@ -17,15 +17,20 @@
 extern crate alloc;
 
 use alloc::string::String;
+
 use alloc::vec;
 use chrono::{self, Duration, TimeDelta};
 use concurrent::thread;
-use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use core::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    result,
+};
 use network::NetworkError;
 #[allow(unused_imports)]
 use network::{TcpListener, TcpStream, UdpSocket, resolve_hostname};
 use runtime::*;
 use smoltcp::wire::*;
+use syscall::return_vals::Errno;
 use terminal::{print, println};
 use time;
 
@@ -35,7 +40,7 @@ enum Protocol {
 }
 enum Socket {
     Udp(UdpSocket),
-    //Tcp(TcpStream),
+    Tcp(TcpStream),
 }
 enum Mode {
     Listen,
@@ -160,22 +165,319 @@ fn main() {
     // =============================================================================
     // open and bind udp socket to local address of the Host
     // =============================================================================
-    let socket_udp = UdpSocket::bind(addr).expect("[failed to open socket.]");
+    //let socket_udp = UdpSocket::bind(addr).expect("[failed to open socket.]");
 
-    match mode {
-        Mode::Listen => return run_udp_server(socket_udp).expect("[[failed to start udp server]"),
-        Mode::Connect => return run_udp_client(socket_udp, addr_remote, time_interval, payload_length).expect("[failed to start udp client.]"),
-    }
+    //match mode {
+    //    Mode::Listen => return run_udp_server(socket_udp).expect("[[failed to start udp server]"),
+    //    Mode::Connect => return run_udp_client(socket_udp, addr_remote, time_interval, payload_length).expect("[failed to start udp client.]"),
+    //}
     //return tcp_send_traffic(dest_addr, payloaddest_addr_length, time_interval);
 
-    let tcp_sock = TcpListener::bind(addr_remote)
-        .expect("failed to open socket")
-        .accept()
-        .expect("failed to accept connection");
+    let socket = match mode {
+        Mode::Listen => match protocol {
+            Protocol::Udp => Socket::Udp(UdpSocket::bind(addr).expect("failed to open socket")),
+            Protocol::Tcp => Socket::Tcp(
+                TcpListener::bind(addr)
+                    .expect("failed to open socket")
+                    .accept()
+                    .expect("failed to accept connection"),
+            ),
+        },
+        Mode::Connect => match protocol {
+            Protocol::Udp => Socket::Udp(UdpSocket::bind(addr).expect("failed to open socket")),
+            Protocol::Tcp => Socket::Tcp(TcpStream::connect(addr_remote).expect("failed to open socket")),
+        },
+    };
+
+    match socket {
+        Socket::Udp(sock) => match mode {
+            Mode::Listen => return run_udp_server(sock).expect("[failed to start udp server]"),
+            Mode::Connect => return udp_send_traffic(sock, addr_remote, time_interval, payload_length).expect("[failed to start udp client.]"),
+        },
+        Socket::Tcp(sock) => match mode {
+            Mode::Listen => return run_tcp_server(sock).expect("[TCP Server failed to start"),
+            Mode::Connect => return run_tcp_client(sock, time_interval, payload_length).expect("[TCP Client failed to start!]"),
+        },
+    };
 
     // connect the tcp socket to the server
-    TcpStream::connect(addr_remote).expect("[failed to open socket]");
+    //TcpStream::connect(addr_remote).expect("[failed to open socket]");
     //tcp_send_traffic(tcp_sock, dest_addr, packet_length, time_interval)
+}
+
+pub fn run_tcp_server(socket: TcpStream) -> Result<()> {
+    println!("TCP Server starting up...");
+    // =============================================================================
+    // define variables
+    // =============================================================================
+    let mut packets_received: u32 = 0;
+    let mut packets_out_of_order: u32 = 0;
+    let mut duplicated_packets: u32 = 0;
+    let mut current_packet_number: u32 = 0;
+    let mut previous_packet_number: u32 = 0;
+    let mut interval_counter: usize = 0;
+    let mut bytes_received: usize = 0;
+    let mut bytes_received_in_interval: usize = 0;
+    let mut bytes_received_total: usize = 0;
+    let mut seconds_passed = TimeDelta::zero();
+    // use this variable to print out the received payload length in the
+    // end results
+    let mut packet_payload_length = 0;
+    // define exit_msg
+    //let exit_msg = b"";
+    let mut exit = false;
+    // define a buffer in which the received packetgets saved to
+    let mut buf = vec![0; 2048];
+
+    println!("[nettest: server listening! Send 'exit' to leave.]");
+
+    // =============================================================================
+    // wait for the reception of the first packet
+    // then start the timer and the loop
+    // =============================================================================
+    let deadline = time::systime() + Duration::seconds(5); // set 5s deadline for packet to arrive
+    println!("[waiting for first packet...]");
+    loop {
+        if time::systime() > deadline {
+            panic!("[timeout waiting for first packet]");
+        }
+
+        let result_size = TcpStream::read(&socket, &mut buf).expect("[failed to receive datagram!]");
+        let recv_data = &buf[..result_size];
+        if recv_data.len() >= 4 {
+            println!("");
+            println!("[======================================================]");
+            println!("  [  Start Time: {}  ]", time::systime().as_seconds_f64());
+            println!("[======================================================]");
+            println!("");
+            packet_payload_length = result_size;
+            // =============================================================================
+            // initalize the counter variables
+            // =============================================================================
+            seconds_passed = time::systime() + Duration::seconds(1);
+            packets_received += 1;
+            bytes_received_in_interval = result_size;
+            // =============================================================================
+            // fix on 03.09.2025 by Johann Spenrath:
+            // the recv_from function is non blocking if it gets called and no packet is in
+            // the sockets it just ends and saves nothing in the buffer this lead to the error
+            // seen below, to fix this just run this in a match loop
+            // rec_data is of type u8 which would overflow -> cast recv_data in previous and current to u32
+            // get the received payload of the packet from the buffer
+            // =============================================================================
+
+            // =============================================================================
+            // read the first 4 bytes of the packet payload which contain
+            // the number of the nth packet, which has been sent by the client
+            // =============================================================================
+            previous_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+            break;
+        }
+    }
+
+    // =============================================================================
+    // receive packets
+    // until an exit msg is sent
+    // =============================================================================
+    loop {
+        let result_size = TcpStream::read(&socket, &mut buf).map_err(|errno| match errno {
+            network::NetworkError::Unknown(Errno::ECONNRESET) => exit = true,
+            NetworkError::DeviceBusy => todo!(),
+            NetworkError::InvalidAddress => todo!(),
+            NetworkError::Unknown(_errno) => todo!(),
+        });
+        if exit {
+            break;
+        }
+        let recv_data = &buf[..result_size.unwrap()];
+        // exit condition
+        if recv_data.len() >= 4 {
+            // count number of packets received
+            packets_received += 1;
+            // =============================================================================
+            // read the first 4 bytes of the packet payload which contain
+            // the number of the nth packet, which has been sent by the client
+            // =============================================================================
+            // cast to u8 because of overflow error thrown by compiler
+            current_packet_number = u32::from_be_bytes([recv_data[0], recv_data[1], recv_data[2], recv_data[3]]);
+
+            // =============================================================================
+            // if the first 4 bytes of the previous and current packet
+            // are equal then the packet had been retransmitted
+            // =============================================================================
+            if current_packet_number == previous_packet_number {
+                duplicated_packets += 1;
+            // =============================================================================
+            // check if the packet has been received out of order
+            // =============================================================================
+            } else if current_packet_number != (previous_packet_number + 1) || current_packet_number < previous_packet_number {
+                packets_out_of_order += 1;
+            }
+            // update values, count the received bytes
+            previous_packet_number = current_packet_number;
+            bytes_received_in_interval += result_size.unwrap();
+
+            // =============================================================================
+            // if a second has passed, print out the number of bytes which
+            // have been received in the current second
+            // =============================================================================
+
+            if seconds_passed < time::systime() {
+                println!(
+                    "[{} - {}] : [{} KB/s]",
+                    interval_counter,
+                    interval_counter + 1,
+                    bytes_received_in_interval as f64 / 1000.0
+                );
+                interval_counter += 1;
+                bytes_received += bytes_received_in_interval;
+                bytes_received_in_interval = 0;
+                seconds_passed += TimeDelta::seconds(1);
+            }
+        }
+    }
+    bytes_received += bytes_received_in_interval;
+
+    println!(
+        "[{} - {}] : [{} KB/s]",
+        interval_counter,
+        interval_counter + 1,
+        bytes_received_in_interval as f64 / 1000.0
+    );
+    println!("");
+    println!("==> [Received exit message from Client: End of reception!]");
+    println!("");
+    println!("[======================================================]");
+    println!("  [Packet Payload length]      ==> {}", packet_payload_length);
+    println!("  [Number of packets received] ==> {}", packets_received);
+    println!("  [Total bytes received]       ==> {} B", bytes_received as f64);
+    println!("  [Kbytes received]            ==> {} KB/s", bytes_received as f64 / 1000.0);
+    println!("  [Average bytes received]     ==> {} B/s", (bytes_received / (interval_counter + 1)) as f64);
+    println!(
+        "  [Average Kbytes received]    ==> {} KB/s",
+        (bytes_received / (interval_counter + 1)) as f64 / 1000.0
+    );
+    println!("  [packets out of order]       ==> {} / {}", packets_out_of_order, packets_received);
+    println!("  [duplicated packets]         ==> {}", duplicated_packets);
+    println!("[======================================================]");
+    return Ok(());
+}
+
+pub fn run_tcp_client(socket: TcpStream, time_interval: TimeDelta, packet_length: u16) -> Result<()> {
+    // =============================================================================
+    // define variables
+    // =============================================================================
+    // save how many bytes have been sent in one second
+    let mut bytes_sent_in_interval: u128 = 0;
+    let mut interval_counter: usize = 0;
+    // save the number of packets send in the time period
+    let mut packets_send: u128 = 0;
+    let mut send_actual: u128 = 0;
+    let mut seconds_passed = TimeDelta::zero();
+
+    println!("TCP Client starting...");
+
+    // ======================================
+    // create the packet
+    // ======================================
+    //let mut buf = vec![0; packet_length as usize];
+    let mut buf = vec![0; packet_length as usize];
+    let msg = b"I hope this works.";
+
+    let mut packet = UdpPacket::new_unchecked(&mut buf);
+    //packet.set_len(packet_length);
+
+    // define the time for exit
+    let test_finish_time = time::systime() + time_interval;
+    // define counter variable seconds_passed for each passing second
+    seconds_passed = time::systime() + chrono::TimeDelta::seconds(1);
+    println!(
+        "[  Start Time: {}  ] =========> [  End Time: {}  ]  ",
+        time::systime().as_seconds_f32(),
+        test_finish_time.as_seconds_f32()
+    );
+
+    // loop until the time interval has been reached
+    while time::systime() < test_finish_time {
+        // count each packet being send
+        packets_send += 1;
+        // ======================================
+        // save the current number in the
+        // current packet this is later being
+        // read by the server for verifying
+        // duplicated and out of order packets
+        // ======================================
+        //buf[0] = ((packets_send >> 24) & 0xff) as u8;
+        //buf[1] = ((packets_send >> 16) & 0xff) as u8;
+        //buf[2] = ((packets_send >> 8) & 0xff) as u8;
+        //buf[3] = (packets_send & 0xff) as u8;
+
+        // ======================================
+        // send the packet
+        // ======================================
+        match TcpStream::write(&socket, msg) {
+            Ok(_) => {
+                send_actual += 1;
+
+                // ======================================
+                // count bytes send in each second
+                // by adding the packet length
+                // of each sent packet
+                // ======================================
+                bytes_sent_in_interval += packet_length as u128;
+            }
+            Err(_e) => {}
+        }
+        // ======================================
+        // if a second passes print out the
+        // current stats in the terminal
+        // ======================================
+        if seconds_passed < time::systime() {
+            println!(
+                "[{:?} - {:?}] : [{} KB/s]",
+                interval_counter,
+                interval_counter + 1,
+                (bytes_sent_in_interval as f64) / 1000.0
+            );
+            // update counters after a passed second
+            interval_counter += 1;
+            bytes_sent_in_interval = 0;
+            seconds_passed += TimeDelta::seconds(1);
+        }
+    }
+
+    // ======================================
+    // after the end of the time_inverval send
+    // an exit message to the server
+    // to signal end of transmission
+    // ======================================
+
+    // ======================================
+    // get the total number of bytes send in
+    // the defined time interval
+    // ======================================
+    let sent_bytes = packet_length as u128 * send_actual;
+    // ======================================
+    // print the end result to
+    // the terminal screen
+    // ======================================
+    println!("==> [ reached finish time! ]");
+    println!("");
+    println!("[====================================================]");
+    println!("  [Packet payload length]          ==> {}", packet_length);
+    println!("  [Number of transmitted packets]  ==> {}", send_actual);
+    println!("  [total Bytes transmitted]        ==> {} Bytes", sent_bytes);
+    println!("  [total Kbytes transmitted]       ==> {} Bytes", sent_bytes as f64 / 1000.0);
+    println!(
+        "  [Average B/s]                   ==> {} B/s",
+        (sent_bytes as f32 / time_interval.as_seconds_f32())
+    );
+    println!(
+        "  [Average KB/s]                   ==> {} KB/s",
+        (sent_bytes as f32 / time_interval.as_seconds_f32()) / 1000.0
+    );
+    println!("[====================================================]");
+    return Ok(());
 }
 
 // =============================================================================
@@ -656,103 +958,4 @@ pub fn udp_receive_traffic(sock: UdpSocket) -> Result<()> {
     println!("  [duplicated packets]         ==> {}", duplicated_packets);
     println!("[======================================================]");
     return Ok(());
-}
-
-//pub fn tcp_send_traffic(sock: TcpStream, addr: SocketAddr, packet_length: u16, time_interval: f64) -> Result<(), &'static str> {
-pub fn tcp_send_traffic(addr: SocketAddr, packet_length: u16, time_interval: TimeDelta) {
-    let mut packets_send = 0;
-    let mut interval_counter = 0;
-    let mut bytes_sent_in_interval: u128 = 0;
-    // create tcp socket
-    let source_port = 1798;
-    let local_socket_addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), source_port);
-    TcpListener::bind(local_socket_addr);
-    //let tcp_sock = TcpListener::bind(local_socket_addr)
-    //    .expect("failed to open socket")
-    //    .accept()
-    //    .expect("failed to accept connection");
-    //println!("worked");
-
-    // connect the tcp socket to the server
-    let tcp_sock = TcpStream::connect(addr).expect("failed to open socket");
-
-    // ======================================
-    // create the packet
-    // ======================================
-    //let mut buf = vec![0; packet_length as usize];
-    let datagram = b"Hello\n";
-    tcp_sock.write(datagram).expect("failed to send message.");
-    let mut buf = [0u8; 1024];
-    let result = tcp_sock.read(&mut buf).unwrap();
-    print!("{}", result);
-
-    // define the time for exit
-    let test_finish_time = time::systime() + time_interval;
-    // define counter variable seconds_passed for each passing second
-    let mut seconds_passed = time::systime().as_seconds_f64() + 1.0;
-    //jprintln!("//=============================================================//");
-    println!(
-        "  [Start Time: {}] |=========| [End Time: {}]  ",
-        time::systime().as_seconds_f64(),
-        test_finish_time
-    );
-    //println!("//=============================================================//");
-
-    /*
-    // loop until the time interval has been reached
-    while time::systime().as_seconds_f64() < test_finish_time {
-        // count each packet being send
-        packets_send += 1;
-        // ======================================
-        // save the current number in the
-        // current packet this is later being
-        // read by the server for verifying
-        // duplicated and out of order packets
-        // ======================================
-        datagram[0] = ((packets_send >> 24) & 0xff) as u8;
-        datagram[1] = ((packets_send >> 16) & 0xff) as u8;
-        datagram[2] = ((packets_send >> 8) & 0xff) as u8;
-        datagram[3] = (packets_send & 0xff) as u8;
-
-        // ======================================
-        // count bytes send in each second
-        // by adding the packet length
-        // of each sent packet
-        // ======================================
-        bytes_sent_in_interval += packet_length as u128;
-
-        // ======================================
-        // if a second passes print out the
-        // current stats in the terminal
-        // ======================================
-        if seconds_passed < time::systime().as_seconds_f64() {
-            println!(
-                "[{:?} - {:?}] : [{} KB/s]",
-                interval_counter,
-                interval_counter + 1,
-                (bytes_sent_in_interval as f64) / 1000.0
-            );
-            // update counters after a passed second
-            interval_counter += 1;
-            bytes_sent_in_interval = 0;
-            seconds_passed += 1.0;
-        }
-    }
-    // ======================================
-    // print the end result to
-    // the terminal screen
-    // ======================================
-    // ======================================
-    // get the total number of bytes send in
-    // the defined time interval
-    // ======================================
-    let sent_bytes = packet_length as u128 * packets_send;
-    println!("==> [ reached finish time! ]");
-    println!("");
-    println!("//====================================================//");
-    println!("    [Number of transmitted packets]  ==> {}", packets_send);
-    println!("    [total Bytes transmitted]        ==> {}", sent_bytes);
-    println!("    [Average KB/s]                   ==> {} KB/s", (sent_bytes as f64 / time_interval) / 1000.0);
-    println!("//====================================================//");
-    */
 }

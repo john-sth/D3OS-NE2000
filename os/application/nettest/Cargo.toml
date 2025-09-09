@@ -24,6 +24,8 @@ chrono = { version = "0.4.34", default-features = false, features = ["alloc"] }
 terminal = { path = "../../library/terminal" }
 runtime = { path = "../../library/runtime" }
 concurrent = { path = "../../library/concurrent" }
+syscall = { path = "../../library/syscall" }
+
 
 time = { path = "../../library/time" }
 network = { path = "../../library/network" }
