@@ -47,8 +47,8 @@ pub enum SocketType {
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
 
-    let enable_rtl8139 = false;
-    let enable_ne2k = true;
+    let enable_rtl8139 = true;
+    let enable_ne2k = false;
 
     if enable_rtl8139 {
         let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
