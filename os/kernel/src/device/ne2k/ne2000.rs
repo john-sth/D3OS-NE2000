@@ -470,7 +470,7 @@ impl Ne2000 {
             ne2000.registers.command_port.write((CR::STOP_DMA | CR::STA | CR::PAGE_0).bits());
 
             //=== STEP 11 ===//
-            // Initialize TCR(Transmit Confituration Register) by writing a 0 to it
+            // Initialize TCR(Transmit Configuration Register) by writing a 0 to it
             ne2000.registers.page0.tcr_port.write(0);
 
             info!("\x1b[1;31mFinished Initialization");

@@ -666,9 +666,6 @@ pub fn udp_send_traffic(socket: UdpSocket, dest_addr: SocketAddr, time_interval:
             bytes_sent_in_interval = 0;
             seconds_passed += TimeDelta::seconds(1);
         }
-        //TODO:
-        //scheduler().sleep(0.001); // e.g., sleep 1 ms, adjust accordingly
-        //thread::sleep(1);
     }
 
     // ======================================

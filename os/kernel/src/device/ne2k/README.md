@@ -25,13 +25,14 @@
   - os/kernel/src/device/ne2k added
   - os/kernel/src/mod.rs : modified
   - os/kernel/src/device : added module ne2k, modified mod.rs
-  - os/kernel/srcnetwork: modified mod.rs, added support for ne2000
+  - os/kernel/src/network: modified mod.rs, added support for ne2000
   - os/kernel/src/boot.rs : comments in the section network, old code
     - contains codes for threads for starting network benchmark tests
   - consts.rs : increased the kernel heap page size
 
 - **APPLICATION**:
   - os/application/nettest : benchmark tool
+  - os/kernel/src/device/ne2k/benchmark.rs : initated in **boot.rs** on line 328
 
 ## MISC
 
@@ -132,15 +133,36 @@ https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
 - [x] latex add receive error img in pdf
 - [x] nettest for rtl8139?
 - [x] execute benchmark.rs
-- [ ] write nettest documentation in README.md
-- [ ] fix latex code section error
+- [x] write nettest documentation in README.md
+- [x] fix latex code section error
+- [ ] add nettest rtl8139 packet size 64 byte to table
 - [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
 - [ ] reread fifo breq underrun, overrun
+- [ ] cut register table or add note about 4th page
+- [ ] check MTU in code
 - [ ] maybe add tcp to nettest (at the end)
 - [ ] create the presentation
 - [ ] remove unneeded logs and todos and unused warnings!!
 - [ ] bring main up to date with development
 - [ ] upload code and thesis until friday !!!!!
+
+\section{Demo ideas}
+
+- bmon for showing visual
+- port the nettest application to rust
+- show traffic with wireshark
+
+\section{Challenges}
+
+- Problem with data port not reading the correct data
+- smoltcp integration was a bit complicated
+- trigger method write had some problems
+- slirp errors, handleoverflow not working
+- fixed slirp errors problem was the tx buffer size of the sockets
+
+- Problem send_to methode Device_Busy error occured a lot during the
+  sending process resulting in nettest abortion
+  -> solving use loop which solves the problem
 
 ### for the presentation
 
