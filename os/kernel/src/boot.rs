@@ -330,7 +330,9 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     if enable {
         extern "sysv64" fn benchmark() {
             //loop {
-            benchmark::benchmark(false);
+            // receive = false => send
+            // receive = true => receive
+            benchmark::benchmark(true);
             //}
         }
         scheduler().ready(Thread::new_kernel_thread(benchmark, "benchmark"));

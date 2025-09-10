@@ -34,7 +34,6 @@ static SOCKETS: Once<RwLock<SocketSet>> = Once::new();
 static SOCKET_PROCESS: RwLock<BTreeMap<SocketHandle, Arc<Process>>> = RwLock::new(BTreeMap::new());
 static DNS_SOCKET: Once<SocketHandle> = Once::new();
 static DHCP_SOCKET: Once<SocketHandle> = Once::new();
-const MAX_INGRESS_PER_TICK: usize = 8;
 
 #[derive(Debug)]
 #[repr(u8)]

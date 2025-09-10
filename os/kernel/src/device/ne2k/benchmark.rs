@@ -29,14 +29,12 @@ pub fn benchmark(receive: bool) {
     let source_ip = smoltcp::wire::IpAddress::Ipv4(Ipv4Address::new(10, 0, 2, 15));
     let source_port = 1798;
     let timing_interval = 20;
-    let packet_length: u16 = 128;
+    let packet_length: u16 = 64;
 
     let dest_addr = (dest_ip, dest_port);
 
     let sock = network::open_udp();
-    network::bind_udp(sock, source_ip, source_port);
-
-    network::bind_udp(sock, source_ip, source_port);
+    let _ = network::bind_udp(sock, source_ip, source_port).expect("failed to bind udp socket!");
 
     if receive {
         return run_udp_server(sock, dest_addr).expect("failed to start server!");
@@ -61,7 +59,7 @@ pub fn run_udp_client(sock: SocketHandle, addr: (IpAddress, u16), timing_interva
     // Step 1: send the init message to the receiving host
     // =============================================================================
     info!("UDP: sending Init to {}.", endpoint);
-    network::send_datagram(sock, addr.0, addr.1, b"Init\n").map_err(|_| "send Init failed")?;
+    let _ = network::send_datagram(sock, addr.0, addr.1, b"Init\n").map_err(|_| "send Init failed")?;
 
     // =============================================================================
     // Step 2: Poll for response
@@ -90,7 +88,7 @@ pub fn run_udp_client(sock: SocketHandle, addr: (IpAddress, u16), timing_interva
             // ======================================
             if recv_data == b"Init\n" {
                 info!("Received expected Init response");
-                udp_send_traffic(sock, addr, timing_interval, packet_length);
+                let _ = udp_send_traffic(sock, addr, timing_interval, packet_length).expect("failed to start send loop!");
                 return Ok(());
             } else {
                 warn!("Unexpected data: {:?}", recv_data);
@@ -192,7 +190,7 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
         }
         // light pacing so the CPU doesn't get hoged
         //network::poll_ne2000_tx();
-        network::poll_sockets_ne2k();
+        //network::poll_sockets_ne2k();
         //scheduler().sleep(20);
     }
 
@@ -257,8 +255,8 @@ pub fn run_udp_server(sock: SocketHandle, addr: (IpAddress, u16)) -> Result<(), 
                 info!("Received expected Init response");
                 let endpoint = IpEndpoint::new(addr.0, addr.1);
                 info!("UDP: sending Init to {}", endpoint);
-                network::send_datagram(sock, addr.0, addr.1, recv_data);
-                udp_receive_traffic(sock);
+                let _ = network::send_datagram(sock, addr.0, addr.1, recv_data).expect("failed to send Init ACK!");
+                let _ = udp_receive_traffic(sock).expect("failed to start receive loop!");
                 return Ok(());
             } else {
                 warn!("Unexpected data: {:?}", recv_data);
@@ -286,16 +284,16 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     let mut packets_received: u32 = 0;
     let mut packets_out_of_order: u32 = 0;
     let mut duplicated_packets: u32 = 0;
+    #[allow(unused_variables)]
     let mut current_packet_number: u32 = 0;
     let mut previous_packet_number: u32 = 0;
-    let mut interval_counter: usize = 0;
-    let mut bytes_received: usize = 0;
     let mut bytes_received_in_interval: usize = 0;
-    let mut bytes_received_total: usize = 0;
     let mut seconds_passed = 0;
     // use this variable to print out the packet length at the
     // end in the results
     let mut info_payload_length = 0;
+    let mut interval_counter: usize = 0;
+    let mut bytes_received: usize = 0;
     // define exit_msg
     let exit_msg = b"exit\n";
     // define a buffer in which the received packetgets saved to
@@ -413,6 +411,9 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
             bytes_received_in_interval = 0;
             seconds_passed += 1_000;
         }
+        // disable/enable
+        // poll sockets after every packet thats being received
+        network::poll_sockets_ne2k();
     }
     bytes_received += bytes_received_in_interval;
 
@@ -421,7 +422,6 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
     info!("--------------------------------------------------------------");
     info!("Packet payload length {}", info_payload_length);
     info!("Number of packets received : {}", packets_received);
-    info!("Total bytes received : {}", bytes_received_total);
     info!("Bytes received : {} KB/s", bytes_received as f64 / 1000.0);
     info!("Average Bytes received : {} KB/s", (bytes_received / (interval_counter + 1)) as f64 / 1000.0);
     info!("packets out of order: {}", packets_out_of_order / packets_received);

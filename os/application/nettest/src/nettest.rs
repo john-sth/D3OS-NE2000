@@ -192,7 +192,7 @@ fn main() {
     match socket {
         Socket::Udp(sock) => match mode {
             Mode::Listen => return run_udp_server(sock).expect("[failed to start udp server]"),
-            Mode::Connect => return udp_send_traffic(sock, addr_remote, time_interval, payload_length).expect("[failed to start udp client.]"),
+            Mode::Connect => return run_udp_client(sock, addr_remote, time_interval, payload_length).expect("[failed to start udp client.]"),
         },
         Socket::Tcp(sock) => match mode {
             Mode::Listen => return run_tcp_server(sock).expect("[TCP Server failed to start"),

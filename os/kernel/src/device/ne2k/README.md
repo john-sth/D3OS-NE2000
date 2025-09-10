@@ -128,6 +128,8 @@ https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
 - [ ] reread fifo breq underrun, overrun
 - [ ] maybe add tcp to nettest (at the end)
 - [ ] create the presentation
+- [ ] remove unneeded logs and todos and unused warnings!!
+- [ ] bring main up to date with development
 - [ ] upload code and thesis until friday !!!!!
 
 - [x] rewrite of nettest application in rust

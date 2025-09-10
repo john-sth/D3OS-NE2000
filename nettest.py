@@ -226,7 +226,7 @@ def send_traffic(sock, addr, packet_length, duration):
     # limit how many packets per second should be sent 
     # because of slirp errors in qemu the OS isn't can't process 
     # a big amount of packets coming in a short amount of time
-    pps = 300
+    pps = 1000
 
     interval = 1.0 / pps
 
