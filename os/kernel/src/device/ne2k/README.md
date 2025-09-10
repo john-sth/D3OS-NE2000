@@ -117,21 +117,6 @@ https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
 - [x] nettest receive benchmark create table
 - [x] readme file how to integrate an emulated nic to d3os, add qemu network site
 - [x] add a list of modified and used files in the OS
-- [x] clean up code
-- [x] reread code, check for commenting what the return value of a function is
-- [x] create flowchart queues
-- [x] latex add receive error img in pdf
-- [ ] fix latex code section error
-- [ ] nettest for rtl8139?
-- [ ] execute benchmark.rs
-- [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
-- [ ] reread fifo breq underrun, overrun
-- [ ] maybe add tcp to nettest (at the end)
-- [ ] create the presentation
-- [ ] remove unneeded logs and todos and unused warnings!!
-- [ ] bring main up to date with development
-- [ ] upload code and thesis until friday !!!!!
-
 - [x] rewrite of nettest application in rust
 - [x] create flowchart for qemu network
 - [x] rewrite the call for receive and overflow with AtomicBool values
@@ -141,6 +126,21 @@ https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
 - [x] check if the ovwe bit gets actually set at the initialization of the nic
 - [x] check if packets bigger than max. Ethernet size don't get processed in the receive method and if so do the same for smoltcp so that no buffer gets enqueued
 - [x] check network/mod.rs open_socket() for transmit and rx size for packetbuffer
+- [x] clean up code
+- [x] reread code, check for commenting what the return value of a function is
+- [x] create flowchart queues
+- [x] latex add receive error img in pdf
+- [x] nettest for rtl8139?
+- [x] execute benchmark.rs
+- [ ] write nettest documentation in README.md
+- [ ] fix latex code section error
+- [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
+- [ ] reread fifo breq underrun, overrun
+- [ ] maybe add tcp to nettest (at the end)
+- [ ] create the presentation
+- [ ] remove unneeded logs and todos and unused warnings!!
+- [ ] bring main up to date with development
+- [ ] upload code and thesis until friday !!!!!
 
 ### for the presentation
 
