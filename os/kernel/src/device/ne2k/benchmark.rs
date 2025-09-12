@@ -17,6 +17,9 @@ use smoltcp::socket::udp::SendError;
 use smoltcp::wire::Ipv4Address;
 use smoltcp::wire::{IpAddress, IpEndpoint};
 
+// enable/disable additional poll after each send/receive operation
+const ENABLE_POLL: bool = true;
+
 // =============================================================================
 // function benchmark
 // =============================================================================
@@ -95,10 +98,6 @@ pub fn run_udp_client(sock: SocketHandle, addr: (IpAddress, u16), timing_interva
                 return Err("Wrong Init response");
             }
         }
-        //info!("polling for response");
-        // Let other threads run / allow network stack to poll
-        //scheduler().sleep(10);
-        //network::poll_sockets_ne2k();
     }
 }
 
@@ -188,10 +187,11 @@ pub fn udp_send_traffic(sock: SocketHandle, addr: (IpAddress, u16), interval: u1
             bytes_sent_in_interval = 0;
             seconds_passed += 1_000;
         }
-        // light pacing so the CPU doesn't get hoged
-        //network::poll_ne2000_tx();
-        //network::poll_sockets_ne2k();
-        //scheduler().sleep(20);
+        // Let other threads run / allow network stack to poll
+        if ENABLE_POLL {
+            network::poll_sockets;
+            //scheduler().sleep(20);
+        }
     }
 
     // ======================================
@@ -263,9 +263,6 @@ pub fn run_udp_server(sock: SocketHandle, addr: (IpAddress, u16)) -> Result<(), 
                 return Err("Unexpected data");
             }
         }
-        //info!("poll ended");
-        // use this for polling because the queue fills up very fast
-        network::poll_ne2000_rx();
     }
 }
 
@@ -413,7 +410,9 @@ pub fn udp_receive_traffic(sock: SocketHandle) -> Result<(), &'static str> {
         }
         // disable/enable
         // poll sockets after every packet thats being received
-        network::poll_sockets_ne2k();
+        if ENABLE_POLL {
+            network::poll_sockets();
+        }
     }
     bytes_received += bytes_received_in_interval;
 
