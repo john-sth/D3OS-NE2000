@@ -20,3 +20,10 @@
 - **Structure of the new implementations:**
   - D3OS-NE2000/os/src/kernel/device/ne2k : folder contains all relevant driver code, more can be read in the included **README.md**
   - D3OS-NE2000/os/src/application/nettest: nettest application for benchmarks in user space
+
+
+
+sudo ip addr add 10.0.0.5/24 dev <interface-name>
+sudo ip link set dev <interface-name> up
+sudo ip route add default via 10.0.0.1
+

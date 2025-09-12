@@ -47,8 +47,8 @@ pub enum SocketType {
 pub fn init() {
     SOCKETS.call_once(|| RwLock::new(SocketSet::new(Vec::new())));
 
-    let enable_rtl8139 = true;
-    let enable_ne2k = false;
+    let enable_rtl8139 = false;
+    let enable_ne2k = true;
 
     if enable_rtl8139 {
         let devices = pci_bus().search_by_ids(0x10ec, 0x8139);
@@ -159,7 +159,7 @@ pub fn init() {
         if let Some(ne2k) = NE2000.get() {
             extern "sysv64" fn poll() {
                 loop {
-                    poll_sockets_ne2k();
+                    poll_sockets();
                     scheduler().sleep(1);
                     //scheduler().switch_thread_no_interrupt();
                 }
@@ -501,13 +501,74 @@ pub fn receive_icmp(handle: SocketHandle, data: &mut [u8]) -> Result<(usize, IpA
     get_socket_for_current_process!(socket, handle, icmp::Socket);
     socket.recv_slice(data)
 }
+// =============================================================================
+// function poll_sockets for the ne2k (Johann Spenrath)
+// check in a poll loop for new packets on the sockets
+// =============================================================================
+pub fn poll_sockets() -> Option<()> {
+    let ne2k = NE2000.get().expect("NE2000 not initialized");
+    let mut interfaces = INTERFACES.try_write()?;
+    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
+    let time = Instant::from_millis(timer().systime_ms() as i64);
+
+    // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
+    // to work with a shared reference. We can safely cast the shared reference to a mutable.
+    let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
+
+    // process both incoming and outgoing network packets using smoltcp
+    let interface = interfaces.get_mut(0).expect("failed to get interface");
+    let res = interface.poll(time, device, &mut sockets);
+
+    // Johann Spenrath on 05.09.2025:
+    // if socket state changed, hand over CPU control to other threads
+    if res == PollResult::SocketStateChanged {
+        scheduler().switch_thread_no_interrupt();
+    }
+
+    // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
+    // Johann Spenrath on 05.09.2025:
+    // check dhcp status (lease acquired or lost)
+    let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
+    let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
+    if let Some(event) = dhcp_socket.poll() {
+        match event {
+            dhcpv4::Event::Deconfigured => {
+                info!("lost DHCP lease");
+                interface.update_ip_addrs(|addrs| addrs.clear());
+                interface.routes_mut().remove_default_ipv4_route();
+            }
+            dhcpv4::Event::Configured(config) => {
+                info!("acquired DHCP lease:");
+                info!("IP address: {}", config.address);
+                interface.update_ip_addrs(|addrs| {
+                    addrs.clear();
+                    addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+                });
+
+                if let Some(router) = config.router {
+                    info!("default gateway: {router}");
+                    interface.routes_mut().add_default_ipv4_route(router).unwrap();
+                } else {
+                    info!("no default gateway");
+                    interface.routes_mut().remove_default_ipv4_route();
+                }
+                info!("DNS servers: {:?}", config.dns_servers);
+                let dns_servers: Vec<_> = config.dns_servers.iter().map(|ip| IpAddress::Ipv4(*ip)).collect();
+                let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
+                let dns_socket = sockets.get_mut::<dns::Socket>(*dns_handle);
+                dns_socket.update_servers(&dns_servers);
+            }
+        }
+    }
+    Some(())
+}
 
 /// Try to poll all sockets.
 ///
 /// This returns None, if it failed to get all needed locks.
 /// This is needed, because we otherwise might get a deadlock, because an
 /// application has the lock on `sockets` while we have the lock on `interfaces`.
-fn poll_sockets() -> Option<()> {
+/*fn poll_sockets() -> Option<()> {
     let rtl8139 = RTL8139.get().expect("RTL8139 not initialized");
     let mut interfaces = INTERFACES.try_write()?;
     let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
@@ -553,7 +614,7 @@ fn poll_sockets() -> Option<()> {
         }
     }
     Some(())
-}
+}*/
 
 pub(crate) fn close_sockets_for_process(process: &mut Process) {
     let mut lock = SOCKET_PROCESS.write();
@@ -581,10 +642,17 @@ fn pick_port(port: u16) -> u16 {
 }
 
 // =============================================================================
+// =============================================================================
+// Old code before the switch to the new network functionalities
+// for polling receive and transmit indepependently (Johann Spenrath)
+// =============================================================================
+// =============================================================================
+
+// =============================================================================
 // poll for ne2k
 // =============================================================================
 
-pub fn poll_ne2000_tx() {
+/*pub fn poll_ne2000_tx() {
     // interface is connection between smoltcp crate and driver
     // interfaces stores a Vector off all added Network Interfaces
     // Cast Arc<Ne2000> to &mut Ne2000 for poll:
@@ -646,7 +714,7 @@ pub fn poll_ne2000_rx() {
     }
 }
 
-/*fn poll_sockets_ne2k() {
+fn poll_sockets_ne2k() {
     // Tune this cap if bursts are heavy:
     const MAX_INGRESS_PER_TICK: usize = 8;
     let now = Instant::from_millis(timer().systime_ms() as i64);
@@ -684,64 +752,3 @@ pub fn poll_ne2000_rx() {
         }
     }
 }*/
-
-// =============================================================================
-//
-// =============================================================================
-pub fn poll_sockets_ne2k() -> Option<()> {
-    let ne2k = NE2000.get().expect("NE2000 not initialized");
-    let mut interfaces = INTERFACES.try_write()?;
-    let mut sockets = SOCKETS.get().expect("Socket set not initialized!").try_write()?;
-    let time = Instant::from_millis(timer().systime_ms() as i64);
-
-    // Smoltcp expects a mutable reference to the device, but the RTL8139 driver is built
-    // to work with a shared reference. We can safely cast the shared reference to a mutable.
-    let device = unsafe { ptr::from_ref(ne2k.deref()).cast_mut().as_mut().unwrap() };
-
-    // process both incoming and outgoing network packets using smoltcp
-    let interface = interfaces.get_mut(0).expect("failed to get interface");
-    let _res = interface.poll(time, device, &mut sockets);
-
-    // Johann Spenrath on 05.09.2025:
-    // if socket state changed, hand over CPU control to other threads
-    //if res == PollResult::SocketStateChanged {
-    //    scheduler().switch_thread_no_interrupt();
-    //}
-
-    // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
-    // Johann Spenrath on 05.09.2025:
-    // check dhcp status (lease acquired or lost)
-    let dhcp_handle = DHCP_SOCKET.get().expect("DHCP socket does not exist yet");
-    let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(*dhcp_handle);
-    if let Some(event) = dhcp_socket.poll() {
-        match event {
-            dhcpv4::Event::Deconfigured => {
-                info!("lost DHCP lease");
-                interface.update_ip_addrs(|addrs| addrs.clear());
-                interface.routes_mut().remove_default_ipv4_route();
-            }
-            dhcpv4::Event::Configured(config) => {
-                info!("acquired DHCP lease:");
-                info!("IP address: {}", config.address);
-                interface.update_ip_addrs(|addrs| {
-                    addrs.clear();
-                    addrs.push(IpCidr::Ipv4(config.address)).unwrap();
-                });
-
-                if let Some(router) = config.router {
-                    info!("default gateway: {router}");
-                    interface.routes_mut().add_default_ipv4_route(router).unwrap();
-                } else {
-                    info!("no default gateway");
-                    interface.routes_mut().remove_default_ipv4_route();
-                }
-                info!("DNS servers: {:?}", config.dns_servers);
-                let dns_servers: Vec<_> = config.dns_servers.iter().map(|ip| IpAddress::Ipv4(*ip)).collect();
-                let dns_handle = DNS_SOCKET.get().expect("DNS socket does not exist yet");
-                let dns_socket = sockets.get_mut::<dns::Socket>(*dns_handle);
-                dns_socket.update_servers(&dns_servers);
-            }
-        }
-    }
-    Some(())
-}
