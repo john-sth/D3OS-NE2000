@@ -187,9 +187,6 @@ def server(sock, address, address_remote):
         if data == init_msg:
             print("received Init request.")
             sock.sendto(data, address_remote)
-            print(address_remote)
-            print(data)
-            print(address)
             return receive_traffic(sock) 
 
 
@@ -494,4 +491,7 @@ def main():
     
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("closing...")
