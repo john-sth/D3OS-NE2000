@@ -160,7 +160,7 @@ pub fn init() {
             extern "sysv64" fn poll() {
                 loop {
                     poll_sockets();
-                    scheduler().sleep(1);
+                    //scheduler().sleep(1);
                     //scheduler().switch_thread_no_interrupt();
                 }
             }
@@ -517,13 +517,13 @@ pub fn poll_sockets() -> Option<()> {
 
     // process both incoming and outgoing network packets using smoltcp
     let interface = interfaces.get_mut(0).expect("failed to get interface");
-    let res = interface.poll(time, device, &mut sockets);
+    let _res = interface.poll(time, device, &mut sockets);
 
     // Johann Spenrath on 05.09.2025:
     // if socket state changed, hand over CPU control to other threads
-    if res == PollResult::SocketStateChanged {
-        scheduler().switch_thread_no_interrupt();
-    }
+    //if res == PollResult::SocketStateChanged {
+    //    scheduler().switch_thread_no_interrupt();
+    //}
 
     // DHCP handling is based on https://github.com/smoltcp-rs/smoltcp/blob/main/examples/dhcp_client.rs
     // Johann Spenrath on 05.09.2025:
