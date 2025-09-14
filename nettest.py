@@ -308,7 +308,7 @@ def client(sock, addr, packet_length, interval):
 
     #print(f"nettest: client listening on {local_address}! Send 'exit' to leave.")
     print("Do Ctrl+c to exit the program !!")
-    print("UDP: sending Init to {addr}")
+    print(f"UDP: sending Init to {addr}")
 
     init_msg = b"Init\n"
     # send init msg to server 

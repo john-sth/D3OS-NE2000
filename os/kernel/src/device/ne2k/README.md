@@ -82,7 +82,7 @@ const INIT_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the O
 
 ### Errors
 
-#### Reason for slirp errors:
+#### Reason for slirp errors (ai and internet):
 
 - because SLIRP is slow and smoltcp is single‑threaded. A huge UDP RX queue makes each poll() spend lots of time shoveling receive packets (holding the sockets lock), so egress doesn’t get serviced fast enough.
   When rx_size was shranked from 1000 → 2, the work poll() does on ingress per tick was limited, freeing time for TX to drain, so your burst to the host stopped tripping SLIRP’s “failed to send packet” path.
@@ -106,9 +106,12 @@ const INIT_HEAP_PAGES: usize = 0x4000; // number of heap pages for booting the O
 - Keep RX modest, find a middle ground that matches poll rate.
 - Increase TX payload slab (total bytes) rather than cranking metadata counts, and poll more frequently (or use poll_delay() for tight pacing). That helps TX drain smoothly without starving the system.
 - For serious throughput tests, switch QEMU from SLIRP to tap/bridge networking; it bypasses SLIRP’s userspace NAT bottleneck. QEMU’s docs call out the backend options.
-- TL;DR: smaller RX limited per‑tick ingress work, unblocked TX, and side‑stepped SLIRP’s bottleneck—so your bursts look “faster” and cleaner.
 
-https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
+## creating a new interface in linux
+
+sudo ip addr add 10.0.0.5/24 dev <interface-name>
+sudo ip link set dev <interface-name> up
+sudo ip route add default via 10.0.0.1
 
 ## TODO:
 
@@ -135,16 +138,16 @@ https://github.com/smoltcp-rs/smoltcp/issues/949?utm_source=chatgpt.com
 - [x] execute benchmark.rs
 - [x] write nettest documentation in README.md
 - [x] fix latex code section error
-- [ ] add nettest rtl8139 packet size 64 byte to table
-- [ ] READ https://en.wikipedia.org/wiki/Ethernet_frame
-- [ ] reread fifo breq underrun, overrun
-- [ ] cut register table or add note about 4th page
-- [ ] check MTU in code
-- [ ] maybe add tcp to nettest (at the end)
+- [x] add nettest rtl8139 packet size 64 byte to table
+- [x] READ https://en.wikipedia.org/wiki/Ethernet_frame
+- [x] reread fifo breq underrun, overrun
+- [x] cut register table or add note about 4th page
+- [x] check MTU in code
+- [x] maybe add tcp to nettest (at the end)
+- [x] remove unneeded logs and todos and unused warnings!!
+- [x] bring main up to date with development
+- [x] upload code and thesis until friday !!!!!
 - [ ] create the presentation
-- [ ] remove unneeded logs and todos and unused warnings!!
-- [ ] bring main up to date with development
-- [ ] upload code and thesis until friday !!!!!
 
 \section{Demo ideas}
 
